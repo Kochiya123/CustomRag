@@ -2,6 +2,7 @@ import numpy as np
 import psycopg2
 from numpy.f2py.auxfuncs import throw_error
 
+
 from master.connect import connect
 from transformers import AutoModel
 import torch
@@ -175,7 +176,7 @@ class Embed_llm:
 
             if image_url:
                 image_embedding = self.model.encode_text(
-                    texts=image_url,
+                    images=image_url,
                     task="retrieval",
                     return_numpy=True,
                 )
@@ -205,7 +206,7 @@ class Embed_llm:
 
             if image_url:
                 image_embedding = self.model.encode_text(
-                    texts=image_url,
+                    images=image_url,
                     task="retrieval",
                     return_numpy=True,
                 )
@@ -262,9 +263,41 @@ class Embed_llm:
             for index in top_3_index:
                 cur.execute("select product_text from product_vector where id = %s", (int(index),))
                 result[index] = cur.fetchone()[0]
-            print("SUcess")
+
         except(Exception, psycopg2.DatabaseError) as error:
             print(error)
             return 0
         return result
 
+    def retrieval_vector_image(self, cur,conn,image_url):
+        try:
+            image_embedding = np.array(self.model.encode_text(
+                images = image_url,
+                task = "retrieval",
+                return_numpy = True,
+            )).reshape(1, -1)
+
+            cur.execute("select embedding_image from product_vector where embedding_text IS NOT NULL")
+
+            rows = cur.fetchall()
+
+            flower_vectors = []
+            for row in rows:
+                vector = np.array(ast.literal_eval(row[0])).reshape(-1)
+                flower_vectors.append(vector)
+
+            flower_vectors = np.array(flower_vectors)
+
+            top_3_index = np.array(
+                np.argpartition(np.array(cosine_similarity(image_embedding, flower_vectors)).flatten(), -3)[-3:]) + 1
+            top_3_index = top_3_index[::1]
+
+            result = {}
+            for index in top_3_index:
+                cur.execute("select product_text from product_vector where id = %s", (int(index),))
+                result[index] = cur.fetchone()[0]
+
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(error)
+            return 0
+        return result
