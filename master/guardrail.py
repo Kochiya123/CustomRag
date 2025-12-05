@@ -1,6 +1,5 @@
 import os
-
-from flask.cli import load_dotenv
+from dotenv import load_dotenv
 from openai import OpenAI
 
 class Guardrail:
@@ -12,15 +11,6 @@ class Guardrail:
         self.client = OpenAI(api_key=api_key)
 
     def guard_check__response(self, query):
-        """
-        Check if the input query contains inappropriate content.
-        
-        Args:
-            query (str): The text to check for moderation
-            
-        Returns:
-            int: 1 if content is flagged, 0 if safe
-        """
         try:
             response = self.client.moderations.create(
                 model="omni-moderation-latest",

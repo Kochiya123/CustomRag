@@ -5,6 +5,8 @@ from flasgger import Swagger
 from huggingface_hub import login
 import os
 
+from langfuse import Langfuse
+
 from master.connect import connect
 from master.generator import Generator_llm, build_context, build_message
 from master.embed_llm import Embed_llm
@@ -13,6 +15,15 @@ from master.embed_llm import Embed_llm
 from master.guardrail import Guardrail
 
 load_dotenv()
+
+#create langfuse for logging and tracing llm call
+langfuse = Langfuse(
+    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+    # optional if self-hosted
+    # base_url="http://localhost:8000"
+)
+
 login(token=os.getenv("HF_TOKEN"))
 cur, conn = connect()
 generator = Generator_llm()
@@ -20,6 +31,7 @@ embed = Embed_llm()
 guard = Guardrail()
 
 app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False  # Allow non-ASCII characters in JSON responses (for Vietnamese)
 api = Api(app)
 
 # Initialize Swagger
@@ -36,41 +48,6 @@ swagger = Swagger(app, template={
         "https"
     ]
 })
-
-"""
-@app.route('/product', methods=['POST'])
-def embed_all_vector_null():
-    
-    Embed all products
-    ---
-    tags:
-      - Products
-    summary: Embed all products with null vectors
-    description: This endpoint embeds all products that have null vector values
-    responses:
-      200:
-        description: Embed all products successfully
-        schema:
-          type: object
-          properties:
-            message:
-              type: string
-              example: Embed all products successfully
-      500:
-        description: Embed all products failed
-        schema:
-          type: object
-          properties:
-            message:
-              type: string
-              example: Embed all products failed
-    
-    result = embed.embedded_all_column_vector_null(cur, conn)
-    if result == 1:
-        return jsonify({'message': 'Embed all products successfully'}), 200
-    return jsonify({'message': 'Embed all products failed: ' + str(result)}), 500
-"""
-
 
 @app.route('/product', methods=['POST'])
 def embed_single():
@@ -115,7 +92,7 @@ def embed_single():
           properties:
             message:
               type: string
-              example: Missing required fields: context, image_url
+              example: "Missing required fields: context, image_url"
       500:
         description: Embed single product failed
         schema:
@@ -189,7 +166,7 @@ def embed_update_single(product_id):
           properties:
             message:
               type: string
-              example: Missing required fields: context, image_url
+              example: "Missing required fields: context, image_url"
       500:
         description: Update the embed failed
         schema:
@@ -197,7 +174,7 @@ def embed_update_single(product_id):
           properties:
             message:
               type: string
-              example: Update embed 123 product failed
+              example: "Update embed 123 product failed"
     """
     data = request.get_json()
     if not data:
@@ -247,7 +224,7 @@ def embed_delete_single(product_id):
           properties:
             message:
               type: string
-              example: Missing required fields: product_id
+              example: "Missing required fields: product_id"
       500:
         description: Delete single product failed
         schema:
@@ -265,74 +242,73 @@ def embed_delete_single(product_id):
         return jsonify({'message': f'Delete product {product_id} successfully'}), 200
     return jsonify({'message': f'Delete single product {product_id} failed: '}), 500
 
-
-"""
-@app.route('/product', methods=['PUT'])
-def embed_all_update():
-    
-    Embed all products (update)
-    ---
-    tags:
-      - Products
-    summary: Update embeddings for all products
-    description: This endpoint updates embeddings for all products
-    responses:
-      200:
-        description: Embed all products successfully
-        schema:
-          type: object
-          properties:
-            message:
-              type: string
-              example: Embed all products successfully
-      500:
-        description: Embed all products failed
-        schema:
-          type: object
-          properties:
-            message:
-              type: string
-              example: Embed all products failed
-    
-    result = embed.embedded_update_all_column(cur, conn)
-    if result == 1:
-        return jsonify({'message': 'Embed all products successfully'}), 200
-    return jsonify({'message': 'Embed all products failed: ' + str(result)}), 500
-"""
-
-@app.route('/<query>', methods=['GET'])
-def get_answer(query):
+@app.route('/', methods=['GET'])
+def get_answer():
     """
     Generate answer for a query
     ---
     tags:
       - Query
     summary: Get answer for a query
-    description: This endpoint generates an answer for a given query using RAG
+    description: |
+      This endpoint generates an answer for a given Vietnamese query using RAG.
+      The query must be provided via URL parameter `query`.
+
     parameters:
       - name: query
-        in: path
+        in: query
         type: string
         required: true
-        description: Query to generate an answer
-        example: "What products do you have?"
+        description: |
+          The user query in Vietnamese. This is the question or request that the user wants answered.
+          The system will search for relevant products and generate an answer based on the context.
+        example: "tôi muốn mua hoa màu vàng cho ngày của mẹ"
+      
+      - name: user_id
+        in: query
+        type: string
+        required: false
+        description: |
+          Optional user identifier for tracking and analytics purposes.
+          Used for Langfuse tracing to associate queries with specific users.
+        example: "user_12345"
+      
+      - name: session_id
+        in: query
+        type: string
+        required: false
+        description: |
+          Optional session identifier for tracking conversation sessions.
+          Used for Langfuse tracing to group related queries in a session.
+        example: "session_abc123"
+
     responses:
       200:
-        description: Successful answer
+        description: Successful answer generation
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Here are the products available..."
+              description: The generated answer in Vietnamese based on the retrieved product context
+              example: "Dựa trên các sản phẩm có sẵn, chúng tôi có các loại hoa màu vàng phù hợp cho ngày của mẹ..."
+        examples:
+          application/json:
+            message: "Chúng tôi có nhiều loại hoa màu vàng đẹp cho ngày của mẹ, bao gồm hoa hướng dương, hoa cúc vàng, và hoa hồng vàng..."
+      
       400:
-        description: Inappropriate content
+        description: Bad request - Missing query parameter or inappropriate content detected
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Câu hỏi chứa nội dung không phù hợp"
+              description: Error message explaining what went wrong
+        examples:
+          application/json:
+
+            - message: "Câu hỏi chứa nội dung không phù hợp"
+      
       404:
         description: Product not found
         schema:
@@ -340,27 +316,51 @@ def get_answer(query):
           properties:
             message:
               type: string
-              example: "Sản phẩm không có trong cửa hàng"
+              description: Message indicating no relevant products were found
+        examples:
+          application/json:
+            message: "Chúng tôi không thể tìm thấy sản phẩm nào phù hợp với mô tả của bạn!"
+      
       500:
-        description: System error
+        description: Internal server error - System error or inappropriate response generated
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Hệ thống gặp trục trặc, vui lòng thử lại sau!"
+              description: Error message indicating a system error occurred
+        examples:
+          application/json:
+            message: "Hệ thống gặp trục trặc, vui lòng thử lại sau!"
+
+    produces:
+      - application/json
+    consumes:
+      - application/json
     """
+    # Get query from query parameter
+    query = request.args.get('query')
+    
+    if not query:
+        return jsonify({'message': 'Missing query parameter "query"'}), 400
+    
+    # Get optional tracking parameters
+    user_id = request.args.get('user_id') or None  # Fallback to IP if not provided
+    session_id = request.args.get('session_id') or None
+    
+    # Content moderation check on input
     #if guard.guard_check__response(query):
         #return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
 
     product_context = embed.retrieval_vector_new(cur, conn, query)
+        
     if product_context is None:
         return jsonify({'message': 'Chúng tôi không thể tìm thấy sản phẩm nào phù hợp với mô tả của bạn!'}), 404
 
-
     messages = build_message(product_context, query)
 
-    answer = generator.generate_answer(messages)
+    # Generate answer using LLM
+    answer = generator.generate_answer(messages, session_id, user_id)
 
     #if guard.guard_check__response(answer):
         #return jsonify({'message': 'Hệ thống gặp trục trặc, vui lòng thử lại sau!'}), 500
