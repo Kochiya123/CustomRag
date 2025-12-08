@@ -1,64 +1,62 @@
 import re
 from typing import Dict, Any
 
-from master.main import cur
-
-# Example dictionaries for quick keyword matching
-FLOWERS = cur.execute('SELECT flowers FROM flowers').fetchall()
-CATEGORIES = cur.execute('SELECT occasions FROM occasions').fetchall()
-preference_map = {
-    # Greater than
-    "trên": ">=",
-    "hơn": ">=",
-    "cao hơn": ">=",
-    "ít nhất": ">=",
-    "tối thiểu": ">=",
-    "lớn hơn": ">=",
-    "vượt quá": ">=",
-    "trở lên": ">=",
-    "không dưới": ">=",
-    ">=": ">=",
-    ">": ">=",
-
-    # Less than
-    "dưới": "<=",
-    "rẻ hơn": "<=",
-    "thấp hơn": "<=",
-    "không quá": "<=",
-    "tối đa": "<=",
-    "nhỏ hơn": "<=",
-    "ít hơn": "<=",
-    "không vượt quá": "<=",
-    "<=": "<=",
-    "<": "<=",
-    "giá tối đa": "<=",
-
-    # Exact
-    "bằng": "=",
-    "chính xác": "=",
-    "đúng bằng": "=",
-    "giá là": "=",
-    "giá đúng": "=",
-    "=": "=",
-    "giá cố định": "=",
-    "giá chính xác": "=",
-    "giá đúng bằng": "=",
-
-    # Range
-    "đến": "BETWEEN",
-    "khoảng": "BETWEEN",
-    "trong khoảng": "BETWEEN",
-    "dao động": "BETWEEN",
-    "nằm trong khoảng": "BETWEEN",
-    "giá từ": "BETWEEN",
-    "tới": "BETWEEN",
-    "giữa": "BETWEEN"
-}
 
 
-def extract_info(user_query: str) -> Dict[str, Any]:
+def extract_info(cur, user_query: str) -> Dict[str, Any]:
+    cur.execute('SELECT product_name FROM product_vector')
+    FLOWERS = [row[0].lower() for row in cur.fetchall() if row[0]]
+    cur.execute('SELECT category_name FROM category_vector')
+    CATEGORIES = [row[0].lower() for row in cur.fetchall() if row[0]]
+    preference_map = {
+        # Greater than
+        "trên": ">=",
+        "hơn": ">=",
+        "cao hơn": ">=",
+        "ít nhất": ">=",
+        "tối thiểu": ">=",
+        "lớn hơn": ">=",
+        "vượt quá": ">=",
+        "trở lên": ">=",
+        "không dưới": ">=",
+        ">=": ">=",
+        ">": ">=",
+
+        # Less than
+        "dưới": "<=",
+        "rẻ hơn": "<=",
+        "thấp hơn": "<=",
+        "không quá": "<=",
+        "tối đa": "<=",
+        "nhỏ hơn": "<=",
+        "ít hơn": "<=",
+        "không vượt quá": "<=",
+        "<=": "<=",
+        "<": "<=",
+        "giá tối đa": "<=",
+
+        # Exact
+        "bằng": "=",
+        "chính xác": "=",
+        "đúng bằng": "=",
+        "giá là": "=",
+        "giá đúng": "=",
+        "=": "=",
+        "giá cố định": "=",
+        "giá chính xác": "=",
+        "giá đúng bằng": "=",
+
+        # Range
+        "đến": "=",
+        "khoảng": "=",
+        "trong khoảng": "=",
+        "dao động": "=",
+        "nằm trong khoảng": "=",
+        "giá từ": "=",
+        "tới": "=",
+        "giữa": "="
+    }
     info = {
-        "intent": None,
         "flower": None,
         "category": None,
         "price": None,
@@ -87,29 +85,19 @@ def extract_info(user_query: str) -> Dict[str, Any]:
     for flower in FLOWERS:
         if flower in query:
             info["flower"] = flower
-            break
+            break  # Stop after first match
 
     # 3. Match occasions
     for cat in CATEGORIES:
         if cat in query:
             info["category"] = cat
-            break
+            break  # Stop after first match
 
     # 4. Delivery intent
     if "giao ngay" in query or "trong ngày" in query:
         info["delivery"] = "same-day"
     elif "giao hàng" in query:
         info["delivery"] = "delivery"
-
-    # 6. Intent classification (very simple)
-    if "giữ được bao lâu" in query or "chăm sóc" in query:
-        info["intent"] = "care_tips"
-    elif "giá" in query or "bao nhiêu" in query:
-        info["intent"] = "price_query"
-    elif "giao hàng" in query:
-        info["intent"] = "delivery_query"
-    else:
-        info["intent"] = "product_search"
 
     return info
 

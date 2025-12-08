@@ -44,6 +44,19 @@ def build_message(context, prompt_input):
 
     return system_instructions
 
+def build_message_general(prompt_input):
+    system_instructions = (
+        f"<s>[INST] <<SYS>> You are a helpful, respectful, and honest assistant. \
+        You provide clear, concise, and informative responses to the customer based on their input. \
+        Keep the tone friendly, professional, and helpful. \
+        Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. \
+        Please ensure that your responses are socially unbiased and positive in nature. \
+        If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. \
+        If you don't know the answer to a question, respond that as a language model you are not able to provide detailed information on that topic.\n<</SYS>>\n\n {prompt_input} [/INST] "
+    )
+
+    return system_instructions
+
 model_name = "VietnamAIHub/Vietnamese_llama2_7B_8K_SFT_General_domain"
 local_dir = "../models/transformers/"
 

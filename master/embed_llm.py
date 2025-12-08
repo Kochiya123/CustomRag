@@ -9,6 +9,7 @@ import torch
 from huggingface_hub import notebook_login
 import ast
 
+from master.rerank_llm import Rerank
 
 threshold_score = 0.8
 
@@ -183,10 +184,9 @@ class Embed_llm:
             return 0
         return list_id
 
-    def embedded_add_single_column_product(self, cur, conn, product_string, image_url, product_id, category_id, price):
+    def embedded_add_single_column_product(self, cur, conn, product_string, product_name, product_id, category_id, price):
         try:
             text_embedding = []
-            image_embedding = []
 
             if product_string:
                 text_embedding = self.model.encode_text(
@@ -196,15 +196,7 @@ class Embed_llm:
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
 
-            if image_url:
-                image_embedding = self.model.encode_image(
-                    images=image_url,
-                    task="retrieval",
-                    return_numpy=True,
-                )
-                image_embedding = image_embedding.squeeze().astype(np.float16).tolist()
-
-            cur.execute('Insert into product_vector (product_id, category_id, price, product_text, embedding_text, embedding_image) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, text_embedding, image_embedding))
+            cur.execute('Insert into product_vector (product_id, category_id, price, product_text, product_name, embedding_text) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, product_name, text_embedding))
             conn.commit()
         except(Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
@@ -216,10 +208,9 @@ class Embed_llm:
             return 0
         return product_id
 
-    def embedded_update_single_column_product(self, cur, conn, product_id, product_string, image_url, category_id, price):
+    def embedded_update_single_column_product(self, cur, conn, product_id, product_string, product_name, category_id, price):
         try:
             text_embedding = []
-            image_embedding = []
 
             if product_string:
                 text_embedding = self.model.encode_text(
@@ -229,29 +220,21 @@ class Embed_llm:
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
 
-            if image_url:
-                image_embedding = self.model.encode_image(
-                    images=image_url,
-                    task="retrieval",
-                    return_numpy=True,
-                )
-                image_embedding = image_embedding.squeeze().astype(np.float16).tolist()
-
             fields = []
             values = []
 
             if category_id:
                 fields.append("category_id = %s")
                 values.append(category_id)
+            if product_name:
+                fields.append("product_name = %s")
+                values.append(product_name)
             if price:
                 fields.append("price = %s")
                 values.append(price)
             if text_embedding:
                 fields.append("embedding_text = %s")
                 values.append(text_embedding)
-            if image_embedding:
-                fields.append("embedding_image = %s")
-                values.append(image_embedding)
 
             # Only run if there are fields to update
             if fields:
@@ -272,7 +255,6 @@ class Embed_llm:
     def embedded_delete_single_column_product(self, cur, conn, product_id):
         try:
             cur.execute("DELETE FROM product_vector WHERE product_id = %s", (product_id,))
-
             conn.commit()
             return product_id
         except(Exception, psycopg2.DatabaseError) as error:
@@ -283,7 +265,7 @@ class Embed_llm:
                 print(f"Rollback error: {rollback_error}")
             return 0
 
-    def retrieval_vector_new(self,cur,conn,query):
+    def retrieval_vector_product(self, cur, conn, query):
         try:
             query_embedding = np.array(self.model.encode_text(
                 texts = query,
@@ -304,7 +286,7 @@ class Embed_llm:
 
             result = []
             for index in top_10_indices:
-                cur.execute("select product_text from product_vector where id = %s", (int(index),))
+                cur.execute("select product_id, product_text from product_vector where id = %s", (int(index),))
                 result.append(cur.fetchone())
 
         except(Exception, psycopg2.DatabaseError) as error:
@@ -354,16 +336,18 @@ class Embed_llm:
             ))
             category_embedding = category_embedding.squeeze().astype(np.float16).tolist()
 
-            cur.execute('Insert into category_vector (category_id, category_text, category_embedding) values (%s, %s, %s) returning id', (category_id, category_text, category_embedding))
+            cur.execute('Insert into category_vector (category_id, category_name, category_embedding) values (%s, %s, %s) returning id', (category_id, category_text, category_embedding))
+            id = cur.fetchone()[0]
             conn.commit()
+            return id
         except(Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
             # Properly rollback the transaction
-        try:
-            conn.rollback()
-        except Exception as rollback_error:
-            print(f"Rollback error: {rollback_error}")
-        return category_id
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return 0
 
     def embedded_update_single_category(self, cur, conn, category_id, category_text):
         try:
@@ -378,7 +362,7 @@ class Embed_llm:
             values = []
 
             if category_text:
-                fields.append("category_text = %s")
+                fields.append("category_name = %s")
                 values.append(category_text)
             if category_embedding:
                 fields.append("category_embedding = %s")
@@ -391,14 +375,15 @@ class Embed_llm:
                 cur.execute(sql, tuple(values))
 
             conn.commit()
+            return category_id
         except(Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
             # Properly rollback the transaction
-        try:
-            conn.rollback()
-        except Exception as rollback_error:
-            print(f"Rollback error: {rollback_error}")
-        return category_id
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return 0
 
     def embedded_delete_single_column_category(self, cur, conn, category_id):
         try:
@@ -421,7 +406,8 @@ class Embed_llm:
                 return_numpy = True,
             ))
             delivery_information_embedding = delivery_information_embedding.squeeze().astype(np.float16).tolist()
-            cur.execute("Insert into delivery_information (delivery_text, delivery_embedding) values (%s, %s) Returning id", (delivery_text, delivery_information_embedding))
+            cur.execute("Insert into delivery_information (delivery_text, delivery_embedding) values (%s, %s) Returning delivery_id", (delivery_text, delivery_information_embedding))
+            id = cur.fetchone()[0]
             conn.commit()
             return id
         except(Exception, psycopg2.DatabaseError) as error:
@@ -432,7 +418,56 @@ class Embed_llm:
                 print(f"Rollback error: {rollback_error}")
             return 0
 
-    def embedded_add_single_voucher_information(self, cur, conn, voucher_id, amount, ends_at, max_discount_amount, min_order_value, percent, starts_at):
+    def embedded_update_delivery_information(self, cur, conn, delivery_id, delivery_text):
+        try:
+            delivery_embedding = np.array(self.model.encode_text(
+                texts=delivery_text,
+                task="retrieval",
+                return_numpy=True,
+            ))
+            delivery_embedding = delivery_embedding.squeeze().astype(np.float16).tolist()
+
+            fields = []
+            values = []
+
+            if delivery_text:
+                fields.append("delivery_text = %s")
+                values.append(delivery_text)
+            if delivery_embedding:
+                fields.append("delivery_embedding = %s")
+                values.append(delivery_embedding)
+
+            # Only run if there are fields to update
+            if fields:
+                sql = f"UPDATE delivery_information SET {', '.join(fields)} WHERE delivery_id = %s"
+                values.append(delivery_id)
+                cur.execute(sql, tuple(values))
+
+            conn.commit()
+            return delivery_id
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            # Properly rollback the transaction
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return 0
+
+    def embedded_delete_delivery_information(self, cur, conn, delivery_id):
+        try:
+            cur.execute("DELETE FROM delivery_information WHERE delivery_id = %s", (delivery_id,))
+            conn.commit()
+            return delivery_id
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return 0
+
+    #def embedded_add_single_voucher_information(self, cur, conn, voucher_id, amount, ends_at, max_discount_amount, min_order_value, percent, starts_at):
         try:
             cur.execute("Insert into voucher_vector (voucher_id, amount, ends_at, max_discount_amount, min_order_value, percent, starts_at) values %s, %s, %s, %s, %s, %s, %s, %s", (voucher_id, amount, ends_at, max_discount_amount, min_order_value, percent, starts_at))
             conn.commit()
@@ -445,7 +480,7 @@ class Embed_llm:
             return 0
         return voucher_id
 
-    def embedded_update_single_voucher_information(self, cur, conn, voucher_id, amount, ends_at, max_discount_amount, min_order_value, percent, starts_at):
+    #def embedded_update_single_voucher_information(self, cur, conn, voucher_id, amount, ends_at, max_discount_amount, min_order_value, percent, starts_at):
         try:
             fields = []
             values = []
@@ -485,7 +520,7 @@ class Embed_llm:
             print(f"Rollback error: {rollback_error}")
         return voucher_id
 
-    def embedded_delete_single_voucher_information(self, cur, conn, voucher_id):
+    #def embedded_delete_single_voucher_information(self, cur, conn, voucher_id):
         try:
             cur.execute("DELETE FROM voucher_vector WHERE voucher_id = %s", (voucher_id,))
             conn.commit()
@@ -501,23 +536,108 @@ class Embed_llm:
     def embedded_retrieve_products_information(self, cur, conn, query, preference, flower, price):
         try:
             products = []
-            if price:
-                if preference:
-                    cur.execute(f"select product_id, product_text from product_vector where price {preference} %s",price)
-                    products = cur.fetchall()
-            else:
+            product_vector = []
+            result = []
+            reranker = Rerank()
+            if price & preference:
+                cur.execute(f"select product_id, product_text from product_vector where price {preference} %s",price)
+                products = cur.fetchall()
+            elif price:
                 cur.execute("select product_id, product_text from product_vector where price = %s and ",price)
                 products = cur.fetchall()
             if flower:
-                product_list = self.retrieval_vector_new(cur, conn, query)
+                product_vector = self.retrieval_vector_product(cur, conn, query)
 
+            if products & product_vector:
+                result = reranker.combine_and_rerank_together(query, products, product_vector)
+            elif products:
+                result = reranker.rerank_query(query, products)
+            elif product_vector:
+                result = reranker.rerank_query(query, product_vector)
+            else:
+                raise Exception('Cannot retrieve result from product vector table!')
+            return result
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            return 0
 
+    def retrieve_random_products(self, cur, conn, limit=5):
+        """
+        Retrieve random products from the database for general questions.
+        Returns a list of tuples: (product_name, product_text, price)
+        """
+        try:
+            # Use ORDER BY RANDOM() to get random products
+            # Limit to 5 products for general questions
+            cur.execute(
+                "SELECT product_name, product_text, price FROM product_vector "
+                "WHERE product_name IS NOT NULL AND product_text IS NOT NULL "
+                "ORDER BY RANDOM() LIMIT %s",
+                (limit,)
+            )
+            products = cur.fetchall()
+            return products if products else []
+        except (Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error in retrieve_random_products: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return []
 
+    def embedded_retrieve_category_information(self, cur, conn, query, category):
+        try:
+            products = []
+            results = []
+            reranker = Rerank()
+            if category:
+                cur.execute("select product_id, product_text from product_vector full join category on product_vector.category_id = category_id where category = %s",category)
+                products = cur.fetchall()
+            products_vector = self.retrieval_vector_product(cur, conn, query)
+            if products_vector & products:
+                results = reranker.combine_and_rerank_together(query, products_vector, products)
+            elif products_vector:
+                results = reranker.rerank_query(query, products_vector)
+            return results
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            return 0
 
+    def embedded_retrieve_delivery_information(self, cur, conn, query):
+        try:
+            delivery_embedding = self.general_embedding(query).reshape(1, -1)
+
+            # Select both id and embedding to get the ID for later retrieval
+            cur.execute("select id, delivery_embedding from delivery_information where delivery_embedding IS NOT NULL")
+            delivery_vectors = cur.fetchall()
+
+            if not delivery_vectors:
+                return None
+
+            # Extract IDs and embeddings separately
+            delivery_ids = [row[0] for row in delivery_vectors]
+            delivery_embeddings = [np.array(ast.literal_eval(row[1])).reshape(-1) for row in delivery_vectors]
+            delivery_embeddings = np.array(delivery_embeddings)
+
+            similarities = cosine_similarity(delivery_embedding, delivery_embeddings)
+
+            # Get index of highest similarity
+            best_idx = np.argmax(similarities)
+
+            # Get the actual database ID
+            best_db_id = delivery_ids[best_idx]
+
+            # Retrieve from database
+            cur.execute("SELECT * FROM delivery_information WHERE id = %s", (best_db_id,))
+            result = cur.fetchone()
+            return result
+        except (Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            return None
 
 
     def general_embedding(self, text):
-        text_embedding = np.array(self.model.encode.text(
+        text_embedding = np.array(self.model.encode_text(
             texts=text,
             task="retrieval",
             return_numpy=True,
