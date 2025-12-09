@@ -5,11 +5,9 @@ services:
     runtime: python-3.10.0
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --config gunicorn_config.py master.main:app
+    startCommand: gunicorn --config master/gunicorn_config.py master.main:app
     envVars:
       - key: DATABASE_URL
-        sync: false
-      - key: HF_TOKEN
         sync: false
       - key: OPEN_AI_TOKEN
         sync: false

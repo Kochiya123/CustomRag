@@ -1,17 +1,18 @@
-import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import os
+import requests
 
 class Rerank:
     def __init__(self):
-        self.tokenizer = AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker')
-        self.model = AutoModelForSequenceClassification.from_pretrained('AITeamVN/Vietnamese_Reranker')
-        self.model.eval()
-        self.MAX_LENGTH = 2304
-        print('model loaded')
+        self.api_token = os.getenv("JINA_TOKEN")
+        if not self.api_token:
+            raise ValueError("JINA_TOKEN environment variable is not set")
+        self.api_url = "https://api.jina.ai/v1/rerank"
+        self.model_name = "jina-reranker-v3-base-multilingual"
+        print("Jina Rerank v3 API initialized")
 
     def rerank_query(self, query, documents):
         """
-        Rerank documents based on query relevance.
+        Rerank documents based on query relevance using Jina Rerank v3 API.
         
         Args:
             query: The search query string
@@ -31,30 +32,48 @@ class Rerank:
             doc_ids = list(range(len(documents)))
             doc_texts = documents
 
-        # Create pairs of (query, document) for the reranker
-        pairs = [[query, doc] for doc in doc_texts]
+        # Early return if no documents
+        if not doc_texts:
+            return []
 
-        with torch.no_grad():
-            inputs = self.tokenizer(
-                pairs,
-                padding=True,
-                truncation=True,
-                return_tensors='pt',
-                max_length=self.MAX_LENGTH
-            )
-            scores = self.model(**inputs, return_dict=True).logits.view(-1).float()
-
-        # Combine documents with their scores
-        # Format: (product_id, product_text, score) - product_id is always first element
-        results = [
-            (doc_ids[i], doc_texts[i], scores[i].item())
-            for i in range(len(doc_texts))
-        ]
-
-        # Sort by score (highest first)
-        results.sort(key=lambda x: x[2], reverse=True)
-
-        return results
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": self.model_name,
+            "query": query,
+            "documents": doc_texts,
+            "top_n": len(doc_texts)  # Return all documents, sorted by relevance
+        }
+        
+        try:
+            response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract results from Jina API response
+            # Jina returns results sorted by relevance: [{"index": 2, "relevance_score": 0.95}, {"index": 0, "relevance_score": 0.87}, ...]
+            # The index corresponds to the original document position
+            results = []
+            for item in result.get("results", []):
+                original_index = item.get("index")
+                score = item.get("relevance_score", 0.0)
+                
+                # Map back to original document using the index
+                if 0 <= original_index < len(doc_ids):
+                    doc_id = doc_ids[original_index]
+                    doc_text = doc_texts[original_index]
+                    results.append((doc_id, doc_text, score))
+            
+            # Results are already sorted by relevance score (highest first) from Jina API
+            return results
+            
+        except Exception as e:
+            print(f"Error in Jina Rerank API call: {e}")
+            # Fallback: return documents in original order with zero scores
+            return [(doc_ids[i], doc_texts[i], 0.0) for i in range(len(doc_texts))]
 
     def combine_and_rerank_together(self, query, products_from_query, products_from_vector):
         """
@@ -86,8 +105,7 @@ class Rerank:
 
         # Rerank all products together (batched processing is automatic)
         # rerank_query will preserve product_id in the returned tuples
-        reranker = Rerank()
-        reranked_all = reranker.rerank_query(query, all_products)
+        reranked_all = self.rerank_query(query, all_products)
 
         # Return top 10: format is (product_id, product_text, score)
         return reranked_all[:10]

@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_restful import Api, Resource
 from flasgger import Swagger
-from huggingface_hub import login
 import os
 import psycopg2
 import tiktoken
@@ -28,8 +27,6 @@ langfuse = Langfuse(
     # optional if self-hosted
     # base_url="http://localhost:8000"
 )
-
-login(token=os.getenv("HF_TOKEN"))
 cur, conn = connect()
 generator = Generator_llm()
 embed = Embed_llm()
