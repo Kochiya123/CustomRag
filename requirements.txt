@@ -5,7 +5,8 @@ flasgger==0.9.7.1
 gunicorn>=21.2.0
 
 # Database
-psycopg2-binary==2.9.9
+# psycopg2-binary 2.9.10+ required for Python 3.13 compatibility
+psycopg2-binary>=2.9.10
 
 # Environment variables
 python-dotenv==1.0.0
