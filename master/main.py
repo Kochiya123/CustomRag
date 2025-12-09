@@ -4,11 +4,13 @@ from flask_restful import Api, Resource
 from flasgger import Swagger
 from huggingface_hub import login
 import os
+import psycopg2
+import tiktoken
 
 from langfuse import Langfuse
 
 from master.connect import connect
-from master.generator import Generator_llm, build_context, build_message, build_message_general
+from master.generator import Generator_llm, build_context, build_message
 from master.embed_llm import Embed_llm
 
 
@@ -33,6 +35,75 @@ generator = Generator_llm()
 embed = Embed_llm()
 guard = Guardrail()
 reranker = Rerank()
+
+def save_chat_history(cur, conn, user_id, user_session_id, user_chat, response):
+    """Save chat history to database"""
+    try:
+        user_session_id_str = str(user_session_id) if user_session_id is not None else None
+        
+        # If user_id exists, remove it from insert parameters (don't include user_id column)
+        if user_id:
+            # Insert without user_id column
+            cur.execute("""
+                INSERT INTO chat_history (user_session_id, user_chat, response)
+                VALUES (%s, %s, %s)
+            """, (user_session_id_str, user_chat, response))
+        else:
+            # Insert with user_id as NULL (user_id doesn't exist)
+            cur.execute("""
+                INSERT INTO chat_history (user_id, user_session_id, user_chat, response)
+                VALUES (NULL, %s, %s, %s)
+            """, (user_session_id_str, user_chat, response))
+        
+        conn.commit()
+        print("Chat history saved successfully")
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error saving chat history: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+
+def load_chat_history(cur, conn, user_id):
+    """Load chat history from database based on user_id"""
+    try:
+        user_id_str = str(user_id) if user_id is not None else None
+        cur.execute("""
+            SELECT user_session_id, user_chat, response, created_at
+            FROM chat_history
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+        """, (user_id_str,))
+        results = cur.fetchall()
+        
+        # Format results as list of dictionaries
+        chat_history = []
+        for row in results:
+            chat_history.append({
+                'user_session_id': row[0],
+                'user_chat': row[1],
+                'response': row[2],
+                'created_at': row[3].isoformat() if row[3] else None
+            })
+        
+        return chat_history
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error loading chat history: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+        return []
+
+def count_tokens(text, model="gpt-4o"):
+    """Count tokens in text using tiktoken"""
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+        return len(encoding.encode(text))
+    except Exception as e:
+        print(f"Error counting tokens: {e}")
+        # Fallback: rough estimation (1 token ≈ 4 characters for English, but Vietnamese might be different)
+        return len(text) // 3
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False  # Allow non-ASCII characters in JSON responses (for Vietnamese)
@@ -466,17 +537,16 @@ def embed_delete_category(category_id):
         return jsonify({'message': f'Delete category {category_id} successfully'}), 200
     return jsonify({'message': f'Delete category {category_id} failed'}), 500
 
-@app.route('/delivery', methods=['POST'])
-def embed_delivery():
+@app.route('/general', methods=['POST'])
+def embed_general():
     """
-    Add delivery information with embedding
+    Add general information with embedding
     ---
     tags:
-      - Delivery
-    summary: Add delivery information and generate its embedding
+      - General Information
+    summary: Add general information and generate its embedding
     description: |
-      This endpoint adds delivery information (shipping policies, delivery times, etc.) 
-      and generates a vector embedding for semantic search.
+      This endpoint adds general information and generates a vector embedding for semantic search.
     parameters:
       - name: body
         in: body
@@ -484,21 +554,21 @@ def embed_delivery():
         schema:
           type: object
           required:
-            - delivery_text
+            - general_text
           properties:
-            delivery_text:
+            general_text:
               type: string
-              description: Delivery information text to embed
-              example: "Giao hàng miễn phí trong nội thành, thời gian giao hàng 2-3 ngày"
+              description: General information text to embed
+              example: "Thông tin chung về cửa hàng hoa"
     responses:
       200:
-        description: Delivery information added successfully
+        description: General information added successfully
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Add delivery information successfully"
+              example: "Add general information successfully"
       400:
         description: Missing required fields
         schema:
@@ -506,45 +576,45 @@ def embed_delivery():
           properties:
             message:
               type: string
-              example: "Missing required fields: delivery_text"
+              example: "Missing required fields: general_text"
       500:
-        description: Failed to add delivery information
+        description: Failed to add general information
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Add delivery information failed"
+              example: "Add general information failed"
     """
     data = request.get_json()
     if not data:
         return jsonify({'message': 'Request body must be JSON'}), 400
 
-    delivery_text = data.get('delivery_text')
-    if not delivery_text:
-        return jsonify({'message': 'Missing required fields: delivery_text'}), 400
+    general_text = data.get('general_text')
+    if not general_text:
+        return jsonify({'message': 'Missing required fields: general_text'}), 400
 
-    result = embed.embedded_add_delivery_information(cur, conn, delivery_text)
+    result = embed.embedded_add_general_information(cur, conn, general_text)
     if result:
-        return jsonify({'message': f'Add delivery information successfully'}), 200
-    return jsonify({'message': f'Add delivery information failed'}), 500
+        return jsonify({'message': f'Add general information successfully'}), 200
+    return jsonify({'message': f'Add general information failed'}), 500
 
-@app.route('/delivery/<delivery_id>', methods=['PUT'])
-def embed_update_delivery_information(delivery_id):
+@app.route('/general/<general_id>', methods=['PUT'])
+def embed_update_general_information(general_id):
     """
-    Update delivery information and its embedding
+    Update general information and its embedding
     ---
     tags:
-      - Delivery
-    summary: Update existing delivery information and regenerate its embedding
+      - General Information
+    summary: Update existing general information and regenerate its embedding
     description: |
-      This endpoint updates delivery information and regenerates its vector embedding.
+      This endpoint updates general information and regenerates its vector embedding.
     parameters:
-      - name: delivery_id
+      - name: general_id
         in: path
         type: integer
         required: true
-        description: The unique identifier of the delivery information to update
+        description: The unique identifier of the general information to update
         example: 1
       - name: body
         in: body
@@ -552,21 +622,21 @@ def embed_update_delivery_information(delivery_id):
         schema:
           type: object
           required:
-            - delivery_text
+            - general_text
           properties:
-            delivery_text:
+            general_text:
               type: string
-              description: Updated delivery information text
-              example: "Giao hàng miễn phí toàn quốc, thời gian giao hàng 1-2 ngày"
+              description: Updated general information text
+              example: "Thông tin cập nhật về cửa hàng hoa"
     responses:
       200:
-        description: Delivery information updated successfully
+        description: General information updated successfully
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Update delivery information successfully"
+              example: "Update general information successfully"
       400:
         description: Missing required fields
         schema:
@@ -574,66 +644,66 @@ def embed_update_delivery_information(delivery_id):
           properties:
             message:
               type: string
-              example: "Missing required fields: delivery_text"
+              example: "Missing required fields: general_text"
       500:
-        description: Failed to update delivery information
+        description: Failed to update general information
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Update delivery information failed"
+              example: "Update general information failed"
     """
     data = request.get_json()
     if not data:
         return jsonify({'message': 'Request body must be JSON'}), 400
-    delivery_text = data.get('delivery_text')
-    if not delivery_text:
-        return jsonify({'message': 'Missing required fields: delivery_text'}), 400
-    result = embed.embedded_update_delivery_information(cur, conn, delivery_id, delivery_text)
+    general_text = data.get('general_text')
+    if not general_text:
+        return jsonify({'message': 'Missing required fields: general_text'}), 400
+    result = embed.embedded_update_general_information(cur, conn, general_id, general_text)
     if result:
-        return jsonify({'message': f'Update delivery information successfully'}), 200
-    return jsonify({'message': f'Update delivery information failed'}), 500
+        return jsonify({'message': f'Update general information successfully'}), 200
+    return jsonify({'message': f'Update general information failed'}), 500
 
-@app.route('/delivery/<delivery_id>', methods=['DELETE'])
-def embed_delete_delivery_information(delivery_id):
+@app.route('/general/<general_id>', methods=['DELETE'])
+def embed_delete_general_information(general_id):
     """
-    Delete delivery information
+    Delete general information
     ---
     tags:
-      - Delivery
-    summary: Delete delivery information and its embedding
+      - General Information
+    summary: Delete general information and its embedding
     description: |
-      This endpoint deletes delivery information and removes its vector embedding from the database.
+      This endpoint deletes general information and removes its vector embedding from the database.
     parameters:
-      - name: delivery_id
+      - name: general_id
         in: path
         type: integer
         required: true
-        description: The unique identifier of the delivery information to delete
+        description: The unique identifier of the general information to delete
         example: 1
     responses:
       200:
-        description: Delivery information deleted successfully
+        description: General information deleted successfully
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Delete delivery information successfully"
+              example: "Delete general information successfully"
       500:
-        description: Failed to delete delivery information
+        description: Failed to delete general information
         schema:
           type: object
           properties:
             message:
               type: string
-              example: "Delete delivery information failed"
+              example: "Delete general information failed"
     """
-    result = embed.embedded_delete_delivery_information(cur, conn, delivery_id)
+    result = embed.embedded_delete_general_information(cur, conn, general_id)
     if result:
-        return jsonify({'message': f'Delete delivery information successfully'}), 200
-    return jsonify({'message': f'Delete delivery information failed'}), 500
+        return jsonify({'message': f'Delete general information successfully'}), 200
+    return jsonify({'message': f'Delete general information failed'}), 500
 
 
 
@@ -676,6 +746,16 @@ def get_answer():
           Optional session identifier for tracking conversation sessions.
           Used for Langfuse tracing to group related queries in a session.
         example: "session_abc123"
+      
+      - name: image_url
+        in: query
+        type: string
+        required: false
+        description: |
+          Optional image URL for image-based product search.
+          If provided, the system will encode the image and compare it with product embeddings
+          using cosine similarity, then combine with text-based similarity scores.
+        example: "https://example.com/flower-image.jpg"
 
     responses:
       200:
@@ -692,7 +772,7 @@ def get_answer():
             message: "Chúng tôi có nhiều loại hoa màu vàng đẹp cho ngày của mẹ, bao gồm hoa hướng dương, hoa cúc vàng, và hoa hồng vàng..."
       
       400:
-        description: Bad request - Missing query parameter or inappropriate content detected
+        description: Bad request - Missing query parameter, query too long (exceeds 600 tokens), or inappropriate content detected
         schema:
           type: object
           properties:
@@ -701,7 +781,8 @@ def get_answer():
               description: Error message explaining what went wrong
         examples:
           application/json:
-
+            - message: "Missing query parameter 'query'"
+            - message: "Query quá dài. Giới hạn là 600 tokens, nhưng query của bạn có 650 tokens. Vui lòng rút ngắn câu hỏi."
             - message: "Câu hỏi chứa nội dung không phù hợp"
       
       404:
@@ -737,38 +818,401 @@ def get_answer():
     user_id = request.args.get('user_id') or None
     session_id = request.args.get('session_id') or None
 
-    # Get query from query parameter
+    # Get query and optional image_url from query parameters
     query = request.args.get('query')
+    image_url = request.args.get('image_url') or None
 
     context = []
     
     if not query:
         return jsonify({'message': 'Missing query parameter "query"'}), 400
 
+    # Check token limit (600 tokens max)
+    query_tokens = count_tokens(query)
+    if query_tokens > 600:
+        return jsonify({
+            'message': f'Query quá dài. Giới hạn là 600 tokens, nhưng query của bạn có {query_tokens} tokens. Vui lòng rút ngắn câu hỏi.'
+        }), 400
+
     # Content moderation check on input
-    # if guard.guard_check__response(query):
-    # return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
+    if guard.guard_check__response(query):
+        return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
 
     info = extract_info(cur,query)
-    context = []
+    context = ""
     
-    if all(value is None for value in info.values()):
-        messages = build_message_general(query)
+    # Route all queries through embedding-based retrieval
+    if info['category']:
+        # Category-based query - use embedding-based retrieval with category filtering
+        context = embed.embedded_retrieve_category_information(cur, conn, query, info['category'])
+        if not context:
+            return jsonify({'message': f'Chúng tôi không tìm thấy sản phẩm nào cho danh mục "{info["category"]}"!'}), 404
+        # Format reranked results
+        if isinstance(context, list) and context:
+            formatted_products = []
+            for product in context[:10]:  # Limit to top 10
+                if len(product) >= 2:
+                    product_id = product[0]
+                    product_text = product[1]
+                    # Fetch product_name and price from database using product_id
+                    cur.execute(
+                        "SELECT product_name, price FROM product_vector WHERE product_id = %s",
+                        (product_id,)
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        product_name, price = result
+                        formatted_products.append((product_id, product_name, product_text, price))
+            if formatted_products:
+                context = build_context(formatted_products)
+            else:
+                context = ""
+        messages = build_message(context, query)
+    elif info['flower']:
+            # Get text-based retrieval results
+            text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
+            
+            # If image_url is provided, compute image-text similarity and combine
+            if image_url:
+                try:
+                    # Compute image-to-text similarity
+                    image_results = embed.compute_image_text_similarity(cur, conn, image_url)
+                    
+                    # Combine text and image results
+                    # text_results format: (product_id, product_text, score) or (product_id, product_text)
+                    # image_results format: (product_id, product_text, similarity_score)
+                    
+                    # Convert text_results to consistent format with scores
+                    text_results_with_scores = []
+                    for item in text_results if isinstance(text_results, list) else []:
+                        if len(item) >= 2:
+                            product_id = item[0]
+                            product_text = item[1]
+                            # If score exists, use it; otherwise set to 0.5
+                            score = item[2] if len(item) >= 3 else 0.5
+                            text_results_with_scores.append((product_id, product_text, score))
+                    
+                    # Combine both results: merge by product_id and average scores
+                    combined_results = {}
+                    
+                    # Add text results
+                    for product_id, product_text, score in text_results_with_scores:
+                        combined_results[product_id] = {
+                            'product_id': product_id,
+                            'product_text': product_text,
+                            'text_score': score,
+                            'image_score': 0.0,
+                            'combined_score': score
+                        }
+                    
+                    # Add/update with image results
+                    for product_id, product_text, image_score in image_results:
+                        if product_id in combined_results:
+                            # Average the scores
+                            combined_results[product_id]['image_score'] = image_score
+                            combined_results[product_id]['combined_score'] = (
+                                combined_results[product_id]['text_score'] + image_score
+                            ) / 2.0
+                        else:
+                            combined_results[product_id] = {
+                                'product_id': product_id,
+                                'product_text': product_text,
+                                'text_score': 0.0,
+                                'image_score': image_score,
+                                'combined_score': image_score
+                            }
+                    
+                    # Convert to list and sort by combined_score
+                    combined_list = list(combined_results.values())
+                    combined_list.sort(key=lambda x: x['combined_score'], reverse=True)
+                    
+                    # Rerank the combined results
+                    # Prepare data for reranker: list of (product_id, product_text)
+                    rerank_data = [(item['product_id'], item['product_text']) for item in combined_list]
+                    
+                    if rerank_data:
+                        reranked_results = reranker.rerank_query(query, rerank_data)
+                        # reranked_results format: (product_id, product_text, score)
+                        context = reranked_results
+                    else:
+                        context = text_results
+                except Exception as e:
+                    print(f"Error processing image: {e}")
+                    # Fallback to text-only results
+                    context = text_results
+            else:
+                # No image, use text results only
+                context = text_results
+            
+            # Format reranked results if needed
+            # Context format: (product_id, product_text, score) or (product_id, product_text)
+            if isinstance(context, list) and context:
+                formatted_products = []
+                for product in context[:10]:  # Limit to top 10
+                    # Handle both formats: (product_id, product_text, score) or (product_id, product_text)
+                    if len(product) >= 2:
+                        product_id = product[0]  # product_id is always first element
+                        product_text = product[1]  # product_text is always second element
+                        # Fetch product_name and price from database using product_id
+                        cur.execute(
+                            "SELECT product_name, price FROM product_vector WHERE product_id = %s",
+                            (product_id,)
+                        )
+                        result = cur.fetchone()
+                        if result:
+                            product_name, price = result
+                            # Format: (product_id, product_name, product_text, price)
+                            formatted_products.append((product_id, product_name, product_text, price))
+                if formatted_products:
+                    context = build_context(formatted_products)
+                else:
+                    context = ""
+            messages = build_message(context, query)
+    elif info.get('intent') == "delivery_info":
+        # General information - use embedding-based retrieval
+        general_info = embed.embedded_retrieve_general_information(cur, conn, query)
+        if general_info:
+            # general_info is a tuple from database, extract the text field
+            # Assuming structure: (general_id, general_text, general_embedding)
+            context = general_info[1] if len(general_info) > 1 else str(general_info)
+        else:
+            context = ""
+        messages = build_message(context, query)
     else:
-        if info['flower']:
-            context = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
-        elif info['delivery']:
-            context = embed.embedded_retrieve_delivery_information(cur,conn,query)
+        # All other queries - use embedding-based retrieval
+        # Use retrieval_vector_product to get products via embedding similarity
+        text_results = embed.retrieval_vector_product(cur, conn, query)
         
+        # If image_url is provided, compute image-text similarity and combine
+        if image_url:
+            try:
+                # Compute image-to-text similarity
+                image_results = embed.compute_image_text_similarity(cur, conn, image_url)
+                
+                # Combine text and image results
+                # text_results format: (product_id, product_text) or (product_id, product_text, score)
+                # image_results format: (product_id, product_text, similarity_score)
+                
+                # Convert text_results to consistent format with scores
+                text_results_with_scores = []
+                for item in text_results if isinstance(text_results, list) else []:
+                    if len(item) >= 2:
+                        product_id = item[0]
+                        product_text = item[1]
+                        score = item[2] if len(item) >= 3 else 0.5
+                        text_results_with_scores.append((product_id, product_text, score))
+                
+                # Combine both results: merge by product_id and average scores
+                combined_results = {}
+                
+                # Add text results
+                for product_id, product_text, score in text_results_with_scores:
+                    combined_results[product_id] = {
+                        'product_id': product_id,
+                        'product_text': product_text,
+                        'text_score': score,
+                        'image_score': 0.0,
+                        'combined_score': score
+                    }
+                
+                # Add/update with image results
+                for product_id, product_text, image_score in image_results:
+                    if product_id in combined_results:
+                        combined_results[product_id]['image_score'] = image_score
+                        combined_results[product_id]['combined_score'] = (
+                            combined_results[product_id]['text_score'] + image_score
+                        ) / 2.0
+                    else:
+                        combined_results[product_id] = {
+                            'product_id': product_id,
+                            'product_text': product_text,
+                            'text_score': 0.0,
+                            'image_score': image_score,
+                            'combined_score': image_score
+                        }
+                
+                # Convert to list and sort by combined_score
+                combined_list = list(combined_results.values())
+                combined_list.sort(key=lambda x: x['combined_score'], reverse=True)
+                
+                # Rerank the combined results
+                rerank_data = [(item['product_id'], item['product_text']) for item in combined_list]
+                
+                if rerank_data:
+                    reranked_results = reranker.rerank_query(query, rerank_data)
+                    context = reranked_results
+                else:
+                    context = text_results
+            except Exception as e:
+                print(f"Error processing image: {e}")
+                context = text_results
+        else:
+            # No image, rerank text results
+            if text_results:
+                context = reranker.rerank_query(query, text_results)
+            else:
+                context = []
+        
+        # Format reranked results
+        if isinstance(context, list) and context:
+            formatted_products = []
+            for product in context[:10]:  # Limit to top 10
+                if len(product) >= 2:
+                    product_id = product[0]
+                    product_text = product[1]
+                    # Fetch product_name and price from database using product_id
+                    cur.execute(
+                        "SELECT product_name, price FROM product_vector WHERE product_id = %s",
+                        (product_id,)
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        product_name, price = result
+                        formatted_products.append((product_id, product_name, product_text, price))
+            if formatted_products:
+                context = build_context(formatted_products)
+            else:
+                context = ""
         messages = build_message(context, query)
 
     # Generate answer using LLM
     answer = generator.generate_answer(messages, session_id, user_id)
 
-    #if guard.guard_check__response(answer):
-        #return jsonify({'message': 'Hệ thống gặp trục trặc, vui lòng thử lại sau!'}), 500
+    if guard.guard_check__response(answer):
+        return jsonify({'message': 'Hệ thống gặp trục trặc, vui lòng thử lại sau!'}), 500
+
+    # Save chat history to database only if user_id is provided
+    if user_id:
+        try:
+            save_chat_history(cur, conn, user_id, session_id, query, answer)
+        except Exception as e:
+            print(f"Warning: Failed to save chat history: {str(e)}")
+            # Continue even if saving fails - don't break the API response
 
     return jsonify({'message': answer}), 200
+
+
+@app.route('/chat_history', methods=['GET'])
+def get_chat_history():
+    """
+    Get chat history for a user
+    ---
+    tags:
+      - Chat History
+    summary: Get chat history by user_id
+    description: |
+      This endpoint retrieves the chat history for a specific user based on their user_id.
+      Returns all chat conversations associated with that user, ordered by most recent first.
+
+    parameters:
+      - name: user_id
+        in: query
+        type: string
+        required: true
+        description: |
+          The user identifier to retrieve chat history for.
+          This should match the user_id used when making queries.
+        example: "user_12345"
+
+    responses:
+      200:
+        description: Successful retrieval of chat history
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: string
+              description: The user identifier
+            chat_history:
+              type: array
+              description: List of chat conversations
+              items:
+                type: object
+                properties:
+                  user_session_id:
+                    type: string
+                    description: Session identifier for this conversation
+                  user_chat:
+                    type: string
+                    description: The user's query/chat message
+                  response:
+                    type: string
+                    description: The system's response
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Timestamp when the conversation occurred
+        examples:
+          application/json:
+            user_id: "user_12345"
+            chat_history:
+              - user_session_id: "session_abc123"
+                user_chat: "tôi muốn mua hoa màu vàng"
+                response: "Chúng tôi có nhiều loại hoa màu vàng..."
+                created_at: "2025-12-08T10:30:00"
+      
+      400:
+        description: Bad request - Missing user_id parameter
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+        examples:
+          application/json:
+            message: "Missing required parameter 'user_id'"
+      
+      404:
+        description: No chat history found for the user
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            user_id:
+              type: string
+        examples:
+          application/json:
+            message: "No chat history found for this user"
+            user_id: "user_12345"
+      
+      500:
+        description: Internal server error
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+        examples:
+          application/json:
+            message: "Error retrieving chat history"
+
+    produces:
+      - application/json
+    """
+    user_id = request.args.get('user_id')
+    
+    if not user_id:
+        return jsonify({'message': "Missing required parameter 'user_id'"}), 400
+    
+    try:
+        chat_history = load_chat_history(cur, conn, user_id)
+        
+        if not chat_history:
+            return jsonify({
+                'message': 'No chat history found for this user',
+                'user_id': user_id,
+                'chat_history': []
+            }), 404
+        
+        return jsonify({
+            'user_id': user_id,
+            'chat_history': chat_history
+        }), 200
+        
+    except Exception as e:
+        print(f"Error retrieving chat history: {str(e)}")
+        return jsonify({'message': 'Error retrieving chat history'}), 500
 
 
 if __name__ == '__main__':

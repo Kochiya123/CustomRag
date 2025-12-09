@@ -1,7 +1,9 @@
 import numpy as np
 import psycopg2
 from numpy.f2py.auxfuncs import throw_error
-
+import requests
+from PIL import Image
+import io
 
 from master.connect import connect
 from transformers import AutoModel
@@ -563,14 +565,13 @@ class Embed_llm:
 
     def retrieve_random_products(self, cur, conn, limit=5):
         """
-        Retrieve random products from the database for general questions.
-        Returns a list of tuples: (product_name, product_text, price)
+        Retrieve random products from the database without embedding.
+        Returns a list of tuples: (product_id, product_name, product_text, price)
         """
         try:
             # Use ORDER BY RANDOM() to get random products
-            # Limit to 5 products for general questions
             cur.execute(
-                "SELECT product_name, product_text, price FROM product_vector "
+                "SELECT product_id, product_name, product_text, price FROM product_vector "
                 "WHERE product_name IS NOT NULL AND product_text IS NOT NULL "
                 "ORDER BY RANDOM() LIMIT %s",
                 (limit,)
@@ -585,50 +586,219 @@ class Embed_llm:
                 print(f"Rollback error: {rollback_error}")
             return []
 
+    def list_all_categories(self, cur, conn):
+        """
+        Retrieve all categories from the database without embedding.
+        Returns a list of tuples: (category_id, category_name)
+        """
+        try:
+            cur.execute(
+                "SELECT category_id, category_name FROM category_vector "
+                "WHERE category_name IS NOT NULL "
+                "ORDER BY category_name"
+            )
+            categories = cur.fetchall()
+            return categories if categories else []
+        except (Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error in list_all_categories: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return []
+
+    def retrieve_products_by_category(self, cur, conn, category_name):
+        """
+        Retrieve all products for a specific category without embedding.
+        Returns a list of tuples: (product_id, product_name, product_text, price)
+        """
+        try:
+            # First, get the category_id from category_name
+            cur.execute(
+                "SELECT category_id FROM category_vector WHERE LOWER(category_name) = LOWER(%s)",
+                (category_name,)
+            )
+            category_result = cur.fetchone()
+            
+            if not category_result:
+                return []
+            
+            category_id = category_result[0]
+            
+            # Get all products for this category
+            cur.execute(
+                "SELECT product_id, product_name, product_text, price FROM product_vector "
+                "WHERE category_id = %s AND product_name IS NOT NULL AND product_text IS NOT NULL",
+                (category_id,)
+            )
+            products = cur.fetchall()
+            return products if products else []
+        except (Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error in retrieve_products_by_category: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return []
+
     def embedded_retrieve_category_information(self, cur, conn, query, category):
+        """
+        Retrieve products by category with embedding-based reranking.
+        This method combines category filtering with vector similarity search.
+        """
         try:
             products = []
             results = []
             reranker = Rerank()
+            
             if category:
-                cur.execute("select product_id, product_text from product_vector full join category on product_vector.category_id = category_id where category = %s",category)
-                products = cur.fetchall()
+                # Get category_id from category_name
+                cur.execute(
+                    "SELECT category_id FROM category_vector WHERE LOWER(category_name) = LOWER(%s)",
+                    (category,)
+                )
+                category_result = cur.fetchone()
+                
+                if category_result:
+                    category_id = category_result[0]
+                    # Get all products for this category
+                    cur.execute(
+                        "SELECT product_id, product_text FROM product_vector WHERE category_id = %s",
+                        (category_id,)
+                    )
+                    products = cur.fetchall()
+            
+            # Also do vector-based retrieval for the query
             products_vector = self.retrieval_vector_product(cur, conn, query)
-            if products_vector & products:
+            
+            # Combine and rerank if both exist
+            if products_vector and products:
                 results = reranker.combine_and_rerank_together(query, products_vector, products)
             elif products_vector:
                 results = reranker.rerank_query(query, products_vector)
+            elif products:
+                # If only category products exist, rerank them
+                results = reranker.rerank_query(query, products)
+            else:
+                return []
+            
             return results
         except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error in embedded_retrieve_category_information: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return []
+
+    def embedded_add_general_information(self, cur, conn, general_text):
+        try:
+            general_embedding = np.array(self.model.encode_text(
+                texts = general_text,
+                task = "retrieval",
+                return_numpy = True,
+            ))
+            general_embedding = general_embedding.squeeze().astype(np.float16).tolist()
+            cur.execute("Insert into general_information (general_text, general_embedding) values (%s, %s) Returning general_id", (general_text, general_embedding))
+            id = cur.fetchone()[0]
+            conn.commit()
+            return id
+        except(Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
             return 0
 
-    def embedded_retrieve_delivery_information(self, cur, conn, query):
+    def embedded_update_general_information(self, cur, conn, general_id, general_text):
         try:
-            delivery_embedding = self.general_embedding(query).reshape(1, -1)
+            general_embedding = np.array(self.model.encode_text(
+                texts=general_text,
+                task="retrieval",
+                return_numpy=True,
+            ))
+            general_embedding = general_embedding.squeeze().astype(np.float16).tolist()
+
+            fields = []
+            values = []
+
+            if general_text:
+                fields.append("general_text = %s")
+                values.append(general_text)
+            if general_embedding:
+                fields.append("general_embedding = %s")
+                values.append(general_embedding)
+
+            # Only run if there are fields to update
+            if fields:
+                sql = f"UPDATE general_information SET {', '.join(fields)} WHERE general_id = %s"
+                values.append(general_id)
+                cur.execute(sql, tuple(values))
+
+            conn.commit()
+            return general_id
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            # Properly rollback the transaction
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return 0
+
+    def embedded_delete_general_information(self, cur, conn, general_id):
+        try:
+            cur.execute("DELETE FROM general_information WHERE general_id = %s", (general_id,))
+            conn.commit()
+            return general_id
+        except(Exception, psycopg2.DatabaseError) as error:
+            print(f"Database error: {error}")
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                print(f"Rollback error: {rollback_error}")
+            return 0
+
+    def embedded_retrieve_general_information(self, cur, conn, query):
+        try:
+            query_embedding = self.general_embedding(query).reshape(1, -1)
 
             # Select both id and embedding to get the ID for later retrieval
-            cur.execute("select id, delivery_embedding from delivery_information where delivery_embedding IS NOT NULL")
-            delivery_vectors = cur.fetchall()
+            # Note: PostgreSQL vector type may need special handling
+            cur.execute("select general_id, general_embedding from general_information where general_embedding IS NOT NULL")
+            general_vectors = cur.fetchall()
 
-            if not delivery_vectors:
+            if not general_vectors:
                 return None
 
             # Extract IDs and embeddings separately
-            delivery_ids = [row[0] for row in delivery_vectors]
-            delivery_embeddings = [np.array(ast.literal_eval(row[1])).reshape(-1) for row in delivery_vectors]
-            delivery_embeddings = np.array(delivery_embeddings)
+            general_ids = [row[0] for row in general_vectors]
+            # Handle vector type - may be stored as array or string representation
+            general_embeddings = []
+            for row in general_vectors:
+                embedding = row[1]
+                # If it's a string representation, parse it
+                if isinstance(embedding, str):
+                    embedding = np.array(ast.literal_eval(embedding))
+                elif isinstance(embedding, (list, tuple)):
+                    embedding = np.array(embedding)
+                else:
+                    embedding = np.array(embedding)
+                general_embeddings.append(embedding.reshape(-1))
+            
+            general_embeddings = np.array(general_embeddings)
 
-            similarities = cosine_similarity(delivery_embedding, delivery_embeddings)
+            similarities = cosine_similarity(query_embedding, general_embeddings)
 
             # Get index of highest similarity
             best_idx = np.argmax(similarities)
 
             # Get the actual database ID
-            best_db_id = delivery_ids[best_idx]
+            best_db_id = general_ids[best_idx]
 
             # Retrieve from database
-            cur.execute("SELECT * FROM delivery_information WHERE id = %s", (best_db_id,))
+            cur.execute("SELECT * FROM general_information WHERE general_id = %s", (best_db_id,))
             result = cur.fetchone()
             return result
         except (Exception, psycopg2.DatabaseError) as error:
@@ -643,4 +813,108 @@ class Embed_llm:
             return_numpy=True,
         ))
         return text_embedding
+
+    def encode_image(self, image_url):
+        """
+        Encode an image from URL using the embedding model.
+        Uses Pillow to process the image.
+        Returns the image embedding vector.
+        """
+        try:
+            # Download image from URL
+            response = requests.get(image_url, timeout=10)
+            response.raise_for_status()
+            
+            # Open image with Pillow
+            image = Image.open(io.BytesIO(response.content))
+            
+            # Convert to RGB if necessary (handle RGBA, P, etc.)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Check if model supports image encoding
+            # Note: jina-embeddings-v4 might not support images directly
+            # If not, we may need to use a different model or approach
+            try:
+                # Try to encode image if model supports it
+                if hasattr(self.model, 'encode_image'):
+                    image_embedding = np.array(self.model.encode_image(
+                        images=image,
+                        task="retrieval",
+                        return_numpy=True,
+                    ))
+                else:
+                    # Fallback: convert image to text description or use text embedding
+                    # For now, we'll use a placeholder - you may need to use a vision model
+                    # or multimodal model for proper image encoding
+                    print("Warning: Model does not support direct image encoding. Using text embedding fallback.")
+                    # You might want to use a vision-language model here instead
+                    # For now, return None to indicate image encoding is not available
+                    return None
+            except Exception as e:
+                print(f"Error encoding image: {e}")
+                return None
+            
+            return image_embedding
+        except Exception as e:
+            print(f"Error processing image from URL {image_url}: {e}")
+            return None
+
+    def compute_image_text_similarity(self, cur, conn, image_url):
+        """
+        Compute cosine similarity between image embedding and product text embeddings.
+        Returns list of tuples: (product_id, product_text, similarity_score)
+        """
+        try:
+            # Encode the image
+            image_embedding = self.encode_image(image_url)
+            if image_embedding is None:
+                return []
+            
+            image_embedding = image_embedding.reshape(1, -1)
+            
+            # Get all product embeddings from database
+            cur.execute("SELECT product_id, product_text, embedding_text FROM product_vector WHERE embedding_text IS NOT NULL")
+            rows = cur.fetchall()
+            
+            if not rows:
+                return []
+            
+            # Extract product IDs, texts, and embeddings
+            product_ids = []
+            product_texts = []
+            product_embeddings = []
+            
+            for row in rows:
+                product_id, product_text, embedding_text = row
+                product_ids.append(product_id)
+                product_texts.append(product_text)
+                try:
+                    embedding = np.array(ast.literal_eval(embedding_text)).reshape(-1)
+                    product_embeddings.append(embedding)
+                except Exception as e:
+                    print(f"Error parsing embedding for product {product_id}: {e}")
+                    continue
+            
+            if not product_embeddings:
+                return []
+            
+            product_embeddings = np.array(product_embeddings)
+            
+            # Compute cosine similarity
+            similarities = cosine_similarity(image_embedding, product_embeddings)
+            
+            # Create list of tuples: (product_id, product_text, similarity_score)
+            results = []
+            for i, (product_id, product_text) in enumerate(zip(product_ids, product_texts)):
+                if i < len(similarities):
+                    results.append((product_id, product_text, float(similarities[i])))
+            
+            # Sort by similarity (descending)
+            results.sort(key=lambda x: x[2], reverse=True)
+            
+            return results
+        except Exception as e:
+            print(f"Error computing image-text similarity: {e}")
+            return []
 
