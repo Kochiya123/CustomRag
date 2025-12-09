@@ -132,7 +132,7 @@ class Generator_llm():
                     messages=messages,
                     temperature=0.1,  # Same as before
                     top_p=0.95,  # Same as before (OpenAI uses top_p, not top_k)
-                    max_tokens=2048,  # Same as max_new_tokens before
+                    max_tokens=1024,  # Same as max_new_tokens before
                     # Note: OpenAI doesn't support repetition_penalty directly,
                     # but frequency_penalty can help reduce repetition
                     frequency_penalty=0.2,  # Similar effect to repetition_penalty=1.2
