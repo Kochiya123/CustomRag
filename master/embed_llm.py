@@ -4,11 +4,10 @@ from numpy.f2py.auxfuncs import throw_error
 import requests
 from PIL import Image
 import io
+import os
+import base64
 
 from master.connect import connect
-from transformers import AutoModel
-import torch
-from huggingface_hub import notebook_login
 import ast
 
 from master.rerank_llm import Rerank
@@ -48,17 +47,113 @@ def cosine_similarity(query_vec, matrix):
     sims = np.dot(matrix, query_vec.flatten()) / (matrix_norms * query_norm)
     return sims  # shape (n,)
 
-local_dir = "../models/transformers/"
-
 class Embed_llm:
     def __init__(self):
-        self.model = AutoModel.from_pretrained("jinaai/jina-embeddings-v4",cache_dir = local_dir, trust_remote_code=True, dtype = torch.float16, revision="main")
-        self.model.to("cuda" if torch.cuda.is_available() else "cpu")
-        print("Model loaded")
+        self.api_token = os.getenv("JINA_TOKEN")
+        if not self.api_token:
+            raise ValueError("JINA_TOKEN environment variable is not set")
+        self.api_url = "https://api.jina.ai/v1/embeddings"
+        self.model_name = "jina-embeddings-v4"
+        print("Jina Embeddings API initialized")
+
+    def encode_text(self, texts, task="retrieval", return_numpy=True):
+        """
+        Encode text(s) using Jina Embeddings v4 API.
+        
+        Args:
+            texts: str or list of str - text(s) to encode
+            task: str - task type (default: "retrieval")
+            return_numpy: bool - whether to return numpy array (default: True)
+        
+        Returns:
+            numpy array of embeddings
+        """
+        # Ensure texts is a list
+        if isinstance(texts, str):
+            texts = [texts]
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "input": texts,
+            "model": self.model_name,
+            "task": task
+        }
+        
+        try:
+            response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract embeddings from response
+            embeddings = [item["embedding"] for item in result["data"]]
+            
+            if return_numpy:
+                embeddings = np.array(embeddings)
+                # If single text, squeeze to remove batch dimension
+                if len(texts) == 1:
+                    embeddings = embeddings.squeeze(0)
+            
+            return embeddings
+        except requests.exceptions.RequestException as e:
+            print(f"Error calling Jina API: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response: {e.response.text}")
+            raise
+
+    def encode_image(self, image_url):
+        """
+        Encode an image from URL using Jina Embeddings v4 API.
+        Uses Pillow to process the image and sends it to the API.
+        Returns the image embedding vector.
+        """
+        try:
+            # Download image from URL
+            response = requests.get(image_url, timeout=10)
+            response.raise_for_status()
+            
+            # Open image with Pillow
+            image = Image.open(io.BytesIO(response.content))
+            
+            # Convert to RGB if necessary (handle RGBA, P, etc.)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Convert image to base64
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            
+            # Call Jina API with image
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "input": [f"data:image/jpeg;base64,{img_base64}"],
+                "model": self.model_name,
+                "task": "retrieval"
+            }
+            
+            api_response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
+            api_response.raise_for_status()
+            result = api_response.json()
+            
+            # Extract embedding from response
+            embedding = np.array(result["data"][0]["embedding"])
+            return embedding
+            
+        except Exception as e:
+            print(f"Error processing image from URL {image_url}: {e}")
+            return None
 
     def retrieval_vector(self,cur,conn,query):
         try:
-            query_embedding = np.array(self.model.encode_text(
+            query_embedding = np.array(self.encode_text(
                 texts = query,
                 task = "retrieval",
                 return_numpy = True,
@@ -103,7 +198,7 @@ class Embed_llm:
 
                 text = text = f"{name}. {description or ''}. Price: ${price:.2f}"
 
-                text_embedding = self.model.encode_text(
+                text_embedding = self.encode_text(
                     texts = text,
                     task = "retrieval",
                     return_numpy = True,
@@ -124,7 +219,7 @@ class Embed_llm:
 
                 text = text = f"{name}. {description or ''}. Price: ${price:.2f}"
 
-                text_embedding = self.model.encode_text(
+                text_embedding = self.encode_text(
                     texts = text,
                     task = "retrieval",
                     return_numpy = True,
@@ -146,7 +241,7 @@ class Embed_llm:
 
             text = text = f"{name}. {description or ''}. Price: ${price:.2f}"
 
-            text_embedding = self.model.encode_text(
+            text_embedding = self.encode_text(
                 texts=text,
                 task="retrieval",
                 return_numpy=True,
@@ -172,7 +267,7 @@ class Embed_llm:
 
                 text = text = f"{name}. {description or ''}. Price: ${price:.2f}"
 
-                text_embedding = self.model.encode_text(
+                text_embedding = self.encode_text(
                     texts=text,
                     task="retrieval",
                     return_numpy=True,
@@ -191,7 +286,7 @@ class Embed_llm:
             text_embedding = []
 
             if product_string:
-                text_embedding = self.model.encode_text(
+                text_embedding = self.encode_text(
                     texts=product_string,
                     task="retrieval",
                     return_numpy=True,
@@ -215,7 +310,7 @@ class Embed_llm:
             text_embedding = []
 
             if product_string:
-                text_embedding = self.model.encode_text(
+                text_embedding = self.encode_text(
                     texts=product_string,
                     task="retrieval",
                     return_numpy=True,
@@ -269,7 +364,7 @@ class Embed_llm:
 
     def retrieval_vector_product(self, cur, conn, query):
         try:
-            query_embedding = np.array(self.model.encode_text(
+            query_embedding = np.array(self.encode_text(
                 texts = query,
                 task = "retrieval",
                 return_numpy = True,
@@ -298,11 +393,10 @@ class Embed_llm:
 
     def retrieval_vector_image(self, cur,conn,image_url):
         try:
-            image_embedding = np.array(self.model.encode_text(
-                images = image_url,
-                task = "retrieval",
-                return_numpy = True,
-            )).reshape(1, -1)
+            image_embedding = self.encode_image(image_url)
+            if image_embedding is None:
+                return {}
+            image_embedding = np.array(image_embedding).reshape(1, -1)
 
             cur.execute("select embedding_image from product_vector where embedding_text IS NOT NULL")
 
@@ -331,7 +425,7 @@ class Embed_llm:
 
     def embedded_add_single_category(self, cur, conn, category_id, category_text):
         try:
-            category_embedding = np.array(self.model.encode_text(
+            category_embedding = np.array(self.encode_text(
                 texts = category_text,
                 task = "retrieval",
                 return_numpy = True,
@@ -353,7 +447,7 @@ class Embed_llm:
 
     def embedded_update_single_category(self, cur, conn, category_id, category_text):
         try:
-            category_embedding = np.array(self.model.encode_text(
+            category_embedding = np.array(self.encode_text(
                 texts=category_text,
                 task="retrieval",
                 return_numpy=True,
@@ -402,7 +496,7 @@ class Embed_llm:
 
     def embedded_add_delivery_information(self, cur, conn, delivery_text):
         try:
-            delivery_information_embedding = np.array(self.model.encode_text(
+            delivery_information_embedding = np.array(self.encode_text(
                 texts = delivery_text,
                 task = "retrieval",
                 return_numpy = True,
@@ -422,7 +516,7 @@ class Embed_llm:
 
     def embedded_update_delivery_information(self, cur, conn, delivery_id, delivery_text):
         try:
-            delivery_embedding = np.array(self.model.encode_text(
+            delivery_embedding = np.array(self.encode_text(
                 texts=delivery_text,
                 task="retrieval",
                 return_numpy=True,
@@ -693,7 +787,7 @@ class Embed_llm:
 
     def embedded_add_general_information(self, cur, conn, general_text):
         try:
-            general_embedding = np.array(self.model.encode_text(
+            general_embedding = np.array(self.encode_text(
                 texts = general_text,
                 task = "retrieval",
                 return_numpy = True,
@@ -713,7 +807,7 @@ class Embed_llm:
 
     def embedded_update_general_information(self, cur, conn, general_id, general_text):
         try:
-            general_embedding = np.array(self.model.encode_text(
+            general_embedding = np.array(self.encode_text(
                 texts=general_text,
                 task="retrieval",
                 return_numpy=True,
@@ -807,58 +901,13 @@ class Embed_llm:
 
 
     def general_embedding(self, text):
-        text_embedding = np.array(self.model.encode_text(
+        text_embedding = np.array(self.encode_text(
             texts=text,
             task="retrieval",
             return_numpy=True,
         ))
         return text_embedding
 
-    def encode_image(self, image_url):
-        """
-        Encode an image from URL using the embedding model.
-        Uses Pillow to process the image.
-        Returns the image embedding vector.
-        """
-        try:
-            # Download image from URL
-            response = requests.get(image_url, timeout=10)
-            response.raise_for_status()
-            
-            # Open image with Pillow
-            image = Image.open(io.BytesIO(response.content))
-            
-            # Convert to RGB if necessary (handle RGBA, P, etc.)
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Check if model supports image encoding
-            # Note: jina-embeddings-v4 might not support images directly
-            # If not, we may need to use a different model or approach
-            try:
-                # Try to encode image if model supports it
-                if hasattr(self.model, 'encode_image'):
-                    image_embedding = np.array(self.model.encode_image(
-                        images=image,
-                        task="retrieval",
-                        return_numpy=True,
-                    ))
-                else:
-                    # Fallback: convert image to text description or use text embedding
-                    # For now, we'll use a placeholder - you may need to use a vision model
-                    # or multimodal model for proper image encoding
-                    print("Warning: Model does not support direct image encoding. Using text embedding fallback.")
-                    # You might want to use a vision-language model here instead
-                    # For now, return None to indicate image encoding is not available
-                    return None
-            except Exception as e:
-                print(f"Error encoding image: {e}")
-                return None
-            
-            return image_embedding
-        except Exception as e:
-            print(f"Error processing image from URL {image_url}: {e}")
-            return None
 
     def compute_image_text_similarity(self, cur, conn, image_url):
         """
