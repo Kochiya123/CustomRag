@@ -889,7 +889,7 @@ def get_answer():
                     # Add text results
                     for product_id, product_text, score in text_results_with_scores:
                         combined_results[product_id] = {
-                            'product_id': product_id,
+                            'id': product_id,
                             'product_text': product_text,
                             'text_score': score,
                             'image_score': 0.0,
@@ -906,7 +906,7 @@ def get_answer():
                             ) / 2.0
                         else:
                             combined_results[product_id] = {
-                                'product_id': product_id,
+                                'id': product_id,
                                 'product_text': product_text,
                                 'text_score': 0.0,
                                 'image_score': image_score,
@@ -919,7 +919,7 @@ def get_answer():
                     
                     # Rerank the combined results
                     # Prepare data for reranker: list of (product_id, product_text)
-                    rerank_data = [(item['product_id'], item['product_text']) for item in combined_list]
+                    rerank_data = [(item['id'], item['product_text']) for item in combined_list]
                     
                     if rerank_data:
                         reranked_results = reranker.rerank_query(query, rerank_data)

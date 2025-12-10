@@ -351,7 +351,7 @@ class Embed_llm:
                 return_numpy = True,
             )).reshape(1, -1)
 
-            cur.execute("select product_id, embedding_text from product_vector where embedding_text IS NOT NULL")
+            cur.execute("select id, embedding_text from product_vector where embedding_text IS NOT NULL")
             rows = cur.fetchall()
 
             # Extract product_id and embeddings separately
@@ -381,7 +381,7 @@ class Embed_llm:
             # Query database to get product_text for each product_id
             result = []
             for product_id, score in top_10_products:
-                cur.execute("select product_id, product_text from product_vector where product_id = %s", (product_id,))
+                cur.execute("select product_id, product_text from product_vector where id = %s", (product_id,))
                 row = cur.fetchone()
                 if row:
                     # Return tuple: (product_id, product_text, similarity_score)
@@ -895,7 +895,7 @@ class Embed_llm:
             image_embedding = image_embedding.reshape(1, -1)
             
             # Get all product embeddings from database
-            cur.execute("SELECT product_id, product_text, embedding_text FROM product_vector WHERE embedding_text IS NOT NULL")
+            cur.execute("SELECT id, product_text, embedding_text FROM product_vector WHERE embedding_text IS NOT NULL")
             rows = cur.fetchall()
             
             if not rows:
