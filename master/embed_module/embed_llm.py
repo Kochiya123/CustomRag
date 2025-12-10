@@ -1,13 +1,11 @@
 import numpy as np
 import psycopg2
-from numpy.f2py.auxfuncs import throw_error
 import requests
 import os
 
-from master.connect import connect
 import ast
 
-from master.rerank_llm import Rerank
+from master.rerank_module.rerank_llm import Rerank
 
 threshold_score = 0.8
 
@@ -353,58 +351,49 @@ class Embed_llm:
                 return_numpy = True,
             )).reshape(1, -1)
 
-            cur.execute("select embedding_text from product_vector where embedding_text IS NOT NULL")
+            cur.execute("select product_id, embedding_text from product_vector where embedding_text IS NOT NULL")
             rows = cur.fetchall()
 
-            flower_vectors = [np.array(ast.literal_eval(row[0])).reshape(-1) for row in rows]
+            # Extract product_id and embeddings separately
+            product_ids = []
+            flower_vectors = []
+            
+            for row in rows:
+                product_id = row[0]  # product_id is first column
+                embedding_text = row[1]  # embedding_text is second column
+                product_ids.append(product_id)
+                flower_vectors.append(np.array(ast.literal_eval(embedding_text)).reshape(-1))
+            
             flower_vectors = np.array(flower_vectors)
 
+            # Compute cosine similarity
             similarities = cosine_similarity(query_embedding, flower_vectors)
 
-            # Get top 10 indices sorted by similarity
-            top_10_indices = np.argsort(similarities)[-10:][::-1] + 1
+            # Create list of (product_id, similarity_score) tuples
+            product_scores = [(product_ids[i], float(similarities[i])) for i in range(len(product_ids))]
 
+            # Sort by similarity score (descending)
+            product_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            # Get top 10 products
+            top_10_products = product_scores[:10]
+
+            # Query database to get product_text for each product_id
             result = []
-            for index in top_10_indices:
-                cur.execute("select product_id, product_text from product_vector where id = %s", (int(index),))
-                result.append(cur.fetchone())
+            for product_id, score in top_10_products:
+                cur.execute("select product_id, product_text from product_vector where product_id = %s", (product_id,))
+                row = cur.fetchone()
+                if row:
+                    # Return tuple: (product_id, product_text, similarity_score)
+                    result.append((row[0], row[1], score))
 
+            return result
         except(Exception, psycopg2.DatabaseError) as error:
             print(error)
-            return 0
-        return result
-
-    def retrieval_vector_image(self, cur,conn,image_url):
-        try:
-            image_embedding = self.encode_image(image_url)
-            if image_embedding is None:
-                return {}
-            image_embedding = np.array(image_embedding).reshape(1, -1)
-
-            cur.execute("select embedding_image from product_vector where embedding_text IS NOT NULL")
-
-            rows = cur.fetchall()
-
-            flower_vectors = []
-            for row in rows:
-                vector = np.array(ast.literal_eval(row[0])).reshape(-1)
-                flower_vectors.append(vector)
-
-            flower_vectors = np.array(flower_vectors)
-
-            top_3_index = np.array(
-                np.argpartition(np.array(cosine_similarity(image_embedding, flower_vectors)).flatten(), -3)[-3:]) + 1
-            top_3_index = top_3_index[::1]
-
-            result = {}
-            for index in top_3_index:
-                cur.execute("select product_text from product_vector where id = %s", (int(index),))
-                result[index] = cur.fetchone()
-
-        except(Exception, psycopg2.DatabaseError) as error:
-            print(error)
-            return 0
-        return result
+            return []
+        except Exception as e:
+            print(f"Error in retrieval_vector_product: {e}")
+            return []
 
     def embedded_add_single_category(self, cur, conn, category_id, category_text):
         try:
@@ -624,7 +613,7 @@ class Embed_llm:
             elif price:
                 cur.execute("select product_id, product_text from product_vector where price = %s and ",price)
                 products = cur.fetchall()
-            if flower:
+            else:
                 product_vector = self.retrieval_vector_product(cur, conn, query)
 
             if products & product_vector:
@@ -932,6 +921,9 @@ class Embed_llm:
                 return []
             
             product_embeddings = np.array(product_embeddings)
+
+            print(product_ids)
+            print(product_texts)
             
             # Compute cosine similarity
             similarities = cosine_similarity(image_embedding, product_embeddings)

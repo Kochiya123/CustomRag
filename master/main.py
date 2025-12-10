@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
-from flask_restful import Api, Resource
+from flask_restful import Api
 from flasgger import Swagger
 import os
 import psycopg2
@@ -8,15 +8,15 @@ import tiktoken
 
 from langfuse import Langfuse
 
-from master.connect import connect
-from master.generator import Generator_llm, build_context, build_message
-from master.embed_llm import Embed_llm
+from master.db_module.connect import connect
+from master.generate_text_module.generator import Generator_llm, build_context, build_message
+from master.embed_module.embed_llm import Embed_llm
 
 
-from master.guardrail import Guardrail
-from master.query_classify import extract_info
+from master.guardrail.guardrail import Guardrail
+from master.query_classify_module.query_classify import extract_info
 
-from master.rerank_llm import Rerank
+from master.rerank_module.rerank_llm import Rerank
 
 load_dotenv()
 
@@ -42,15 +42,9 @@ def save_chat_history(cur, conn, user_id, user_session_id, user_chat, response):
         if user_id:
             # Insert without user_id column
             cur.execute("""
-                INSERT INTO chat_history (user_session_id, user_chat, response)
-                VALUES (%s, %s, %s)
-            """, (user_session_id_str, user_chat, response))
-        else:
-            # Insert with user_id as NULL (user_id doesn't exist)
-            cur.execute("""
                 INSERT INTO chat_history (user_id, user_session_id, user_chat, response)
-                VALUES (NULL, %s, %s, %s)
-            """, (user_session_id_str, user_chat, response))
+                VALUES (%s, %s, %s, %s)
+            """, (user_id, user_session_id_str, user_chat, response))
         
         conn.commit()
         print("Chat history saved successfully")
@@ -1213,4 +1207,4 @@ def get_chat_history():
 
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=8000)

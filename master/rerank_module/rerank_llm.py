@@ -22,15 +22,39 @@ class Rerank:
             List of tuples: (product_id, product_text, score) - sorted by score (highest first)
             Note: product_id is always preserved in the first position
         """
+        # Validate query
+        if not query or not isinstance(query, str) or not query.strip():
+            print("Warning: Invalid or empty query provided to rerank_query")
+            return []
+        
+        # Filter out None values and validate documents
+        if not documents:
+            return []
+        
         # Handle both list of strings and list of tuples (product_id, product_text)
-        if documents and isinstance(documents[0], tuple):
+        if isinstance(documents[0], tuple):
             # Extract product_id from first element, product_text from second element
-            doc_ids = [doc[0] for doc in documents]  # product_id is preserved here
-            doc_texts = [doc[1] for doc in documents]
+            # Filter out None values and ensure tuples have at least 2 elements
+            valid_docs = []
+            for doc in documents:
+                if doc is not None and isinstance(doc, tuple) and len(doc) >= 2:
+                    # Ensure product_text is a string and not None
+                    if doc[1] is not None and isinstance(doc[1], str) and doc[1].strip():
+                        valid_docs.append(doc)
+            
+            if not valid_docs:
+                return []
+            
+            doc_ids = [doc[0] for doc in valid_docs]  # product_id is preserved here
+            doc_texts = [doc[1] for doc in valid_docs]
         else:
-            # If documents are strings, generate sequential IDs
-            doc_ids = list(range(len(documents)))
-            doc_texts = documents
+            # If documents are strings, filter out None and empty values
+            valid_docs = [doc for doc in documents if doc is not None and isinstance(doc, str) and doc.strip()]
+            if not valid_docs:
+                return []
+            # Generate sequential IDs
+            doc_ids = list(range(len(valid_docs)))
+            doc_texts = valid_docs
 
         # Early return if no documents
         if not doc_texts:
@@ -69,6 +93,17 @@ class Rerank:
             # Results are already sorted by relevance score (highest first) from Jina API
             return results
             
+        except requests.exceptions.HTTPError as e:
+            error_msg = str(e)
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    error_msg = f"{error_msg} - Response: {error_detail}"
+                except:
+                    error_msg = f"{error_msg} - Response: {e.response.text}"
+            print(f"Error in Jina Rerank API call: {error_msg}")
+            # Fallback: return documents in original order with zero scores
+            return [(doc_ids[i], doc_texts[i], 0.0) for i in range(len(doc_texts))]
         except Exception as e:
             print(f"Error in Jina Rerank API call: {e}")
             # Fallback: return documents in original order with zero scores
