@@ -63,6 +63,7 @@ def build_message(context, prompt_input):
         f"- Don't make up any of the information. "
         f"- Keep the tone friendly, professional, and helpful. "
         f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
+        f"Don't leave any uncommon tag or mark in the answer"
         f"Please ensure that your responses are socially unbiased and positive in nature. "
         f"If a question does not make any sense, or is not factually coherent, or no context is provided, explain why instead of answering something not correct. "
         f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question."
