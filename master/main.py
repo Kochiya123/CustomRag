@@ -1049,7 +1049,7 @@ def get_answer():
                 context = reranker.rerank_query(query, text_results)
             else:
                 context = []
-        
+        print(context)
         # Format reranked results
         if isinstance(context, list) and context:
             formatted_products = []

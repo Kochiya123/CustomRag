@@ -2,10 +2,7 @@ import numpy as np
 import psycopg2
 from numpy.f2py.auxfuncs import throw_error
 import requests
-from PIL import Image
-import io
 import os
-import base64
 
 from master.connect import connect
 import ast
@@ -96,7 +93,6 @@ class Embed_llm:
                 # If single text, squeeze to remove batch dimension
                 if len(texts) == 1:
                     embeddings = embeddings.squeeze(0)
-            
             return embeddings
         except requests.exceptions.RequestException as e:
             print(f"Error calling Jina API: {e}")
@@ -107,39 +103,24 @@ class Embed_llm:
     def encode_image(self, image_url):
         """
         Encode an image from URL using Jina Embeddings v4 API.
-        Uses Pillow to process the image and sends it to the API.
+        Passes the image URL directly to the API without processing.
         Returns the image embedding vector.
         """
         try:
-            # Download image from URL
-            response = requests.get(image_url, timeout=10)
-            response.raise_for_status()
-            
-            # Open image with Pillow
-            image = Image.open(io.BytesIO(response.content))
-            
-            # Convert to RGB if necessary (handle RGBA, P, etc.)
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Convert image to base64
-            buffered = io.BytesIO()
-            image.save(buffered, format="JPEG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            
-            # Call Jina API with image
+            # Call Jina API with image URL directly
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
                 "Content-Type": "application/json"
             }
             
-            payload = {
-                "input": [f"data:image/jpeg;base64,{img_base64}"],
+            # Create image payload with URL
+            image_payload = {
+                "input": [image_url],
                 "model": self.model_name,
                 "task": "retrieval.passage"
             }
             
-            api_response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
+            api_response = requests.post(self.api_url, json=image_payload, headers=headers, timeout=30)
             api_response.raise_for_status()
             result = api_response.json()
             
@@ -149,6 +130,8 @@ class Embed_llm:
             
         except Exception as e:
             print(f"Error processing image from URL {image_url}: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response: {e.response.text}")
             return None
 
     def retrieval_vector(self,cur,conn,query):

@@ -60,13 +60,12 @@ class Rerank:
             for item in result.get("results", []):
                 original_index = item.get("index")
                 score = item.get("relevance_score", 0.0)
-                
+
                 # Map back to original document using the index
                 if 0 <= original_index < len(doc_ids):
                     doc_id = doc_ids[original_index]
                     doc_text = doc_texts[original_index]
                     results.append((doc_id, doc_text, score))
-            
             # Results are already sorted by relevance score (highest first) from Jina API
             return results
             
