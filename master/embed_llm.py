@@ -56,13 +56,13 @@ class Embed_llm:
         self.model_name = "jina-embeddings-v4"
         print("Jina Embeddings API initialized")
 
-    def encode_text(self, texts, task="retrieval", return_numpy=True):
+    def encode_text(self, texts, task="retrieval.passage", return_numpy=True):
         """
         Encode text(s) using Jina Embeddings v4 API.
         
         Args:
             texts: str or list of str - text(s) to encode
-            task: str - task type (default: "retrieval")
+            task: str - task type (default: "retrieval.passage" for documents, use "retrieval.query" for queries)
             return_numpy: bool - whether to return numpy array (default: True)
         
         Returns:
@@ -136,7 +136,7 @@ class Embed_llm:
             payload = {
                 "input": [f"data:image/jpeg;base64,{img_base64}"],
                 "model": self.model_name,
-                "task": "retrieval"
+                "task": "retrieval.passage"
             }
             
             api_response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
@@ -155,7 +155,7 @@ class Embed_llm:
         try:
             query_embedding = np.array(self.encode_text(
                 texts = query,
-                task = "retrieval",
+                task = "retrieval.query",
                 return_numpy = True,
             )).reshape(1, -1)
 
@@ -200,7 +200,7 @@ class Embed_llm:
 
                 text_embedding = self.encode_text(
                     texts = text,
-                    task = "retrieval",
+                    task = "retrieval.passage",
                     return_numpy = True,
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
@@ -221,7 +221,7 @@ class Embed_llm:
 
                 text_embedding = self.encode_text(
                     texts = text,
-                    task = "retrieval",
+                    task = "retrieval.passage",
                     return_numpy = True,
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
@@ -243,7 +243,7 @@ class Embed_llm:
 
             text_embedding = self.encode_text(
                 texts=text,
-                task="retrieval",
+                task="retrieval.passage",
                 return_numpy=True,
             )
             text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
@@ -269,7 +269,7 @@ class Embed_llm:
 
                 text_embedding = self.encode_text(
                     texts=text,
-                    task="retrieval",
+                    task="retrieval.passage",
                     return_numpy=True,
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
@@ -288,7 +288,7 @@ class Embed_llm:
             if product_string:
                 text_embedding = self.encode_text(
                     texts=product_string,
-                    task="retrieval",
+                    task="retrieval.passage",
                     return_numpy=True,
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
@@ -312,7 +312,7 @@ class Embed_llm:
             if product_string:
                 text_embedding = self.encode_text(
                     texts=product_string,
-                    task="retrieval",
+                    task="retrieval.passage",
                     return_numpy=True,
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
@@ -366,7 +366,7 @@ class Embed_llm:
         try:
             query_embedding = np.array(self.encode_text(
                 texts = query,
-                task = "retrieval",
+                task = "retrieval.query",
                 return_numpy = True,
             )).reshape(1, -1)
 
@@ -427,7 +427,7 @@ class Embed_llm:
         try:
             category_embedding = np.array(self.encode_text(
                 texts = category_text,
-                task = "retrieval",
+                task = "retrieval.passage",
                 return_numpy = True,
             ))
             category_embedding = category_embedding.squeeze().astype(np.float16).tolist()
@@ -449,7 +449,7 @@ class Embed_llm:
         try:
             category_embedding = np.array(self.encode_text(
                 texts=category_text,
-                task="retrieval",
+                task="retrieval.passage",
                 return_numpy=True,
             ))
             category_embedding = category_embedding.squeeze().astype(np.float16).tolist()
@@ -498,7 +498,7 @@ class Embed_llm:
         try:
             delivery_information_embedding = np.array(self.encode_text(
                 texts = delivery_text,
-                task = "retrieval",
+                task = "retrieval.passage",
                 return_numpy = True,
             ))
             delivery_information_embedding = delivery_information_embedding.squeeze().astype(np.float16).tolist()
@@ -518,7 +518,7 @@ class Embed_llm:
         try:
             delivery_embedding = np.array(self.encode_text(
                 texts=delivery_text,
-                task="retrieval",
+                task="retrieval.passage",
                 return_numpy=True,
             ))
             delivery_embedding = delivery_embedding.squeeze().astype(np.float16).tolist()
@@ -789,7 +789,7 @@ class Embed_llm:
         try:
             general_embedding = np.array(self.encode_text(
                 texts = general_text,
-                task = "retrieval",
+                task = "retrieval.passage",
                 return_numpy = True,
             ))
             general_embedding = general_embedding.squeeze().astype(np.float16).tolist()
@@ -809,7 +809,7 @@ class Embed_llm:
         try:
             general_embedding = np.array(self.encode_text(
                 texts=general_text,
-                task="retrieval",
+                task="retrieval.passage",
                 return_numpy=True,
             ))
             general_embedding = general_embedding.squeeze().astype(np.float16).tolist()
@@ -903,7 +903,7 @@ class Embed_llm:
     def general_embedding(self, text):
         text_embedding = np.array(self.encode_text(
             texts=text,
-            task="retrieval",
+            task="retrieval.query",
             return_numpy=True,
         ))
         return text_embedding
