@@ -21,11 +21,6 @@ def build_context(products):
     """
     context_lines = []
     for p in products:
-        if len(p) == 4:
-            # New format: (product_id, product_name, product_text, price)
-            product_id, product_name, product_text, price = p
-            context_lines.append(f"- {product_name} (ID: {product_id}, ${price}): {product_text}")
-        elif len(p) == 3:
             # Legacy format: (product_name, product_text, price)
             product_name, product_text, price = p
             context_lines.append(f"- {product_name} (${price}): {product_text}")
