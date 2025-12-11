@@ -7,7 +7,7 @@ class Rerank:
         if not self.api_token:
             raise ValueError("JINA_TOKEN environment variable is not set")
         self.api_url = "https://api.jina.ai/v1/rerank"
-        self.model_name = "jina-reranker-v3-base-multilingual"
+        self.model_name = "jina-reranker-v2-base-multilingual"
         print("Jina Rerank v3 API initialized")
 
     def rerank_query(self, query, documents):
