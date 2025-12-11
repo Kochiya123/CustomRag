@@ -698,7 +698,7 @@ def embed_delete_general_information(general_id):
 
 
 
-@app.route('/', methods=['GET'])
+@app.route('/', methods=['POST'])
 def get_answer():
     """
     Generate answer for a query
