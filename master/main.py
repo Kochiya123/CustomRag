@@ -707,18 +707,35 @@ def get_answer():
       - Query
     summary: Get answer for a query
     description: |
-      This endpoint generates an answer for a given Vietnamese query using RAG.
-      The query must be provided via URL parameter `query`.
+      This endpoint generates an answer for a given Vietnamese query using RAG (Retrieval-Augmented Generation).
+      The system uses Jina Embeddings v4 for text and image encoding, Jina Rerank v3 for result reranking,
+      and OpenAI GPT-4o for answer generation.
+      
+      The query can be about:
+      - Specific flower products (with optional image URL for visual search)
+      - Product categories
+      - General shop information (delivery, policies, etc.)
+      - General questions about flowers
+      
+      All queries are processed through embedding-based retrieval. If an image_url is provided,
+      the system combines text-to-text and image-to-text similarity scores before reranking.
 
     parameters:
-      - name: query
-        in: query
-        type: string
+      - name: body
+        in: body
         required: true
-        description: |
-          The user query in Vietnamese. This is the question or request that the user wants answered.
-          The system will search for relevant products and generate an answer based on the context.
-        example: "tôi muốn mua hoa màu vàng cho ngày của mẹ"
+        schema:
+          type: object
+          required:
+            - query
+          properties:
+            query:
+              type: string
+              description: |
+                The user query in Vietnamese. This is the question or request that the user wants answered.
+                Maximum length: 600 tokens. The system will search for relevant products using vector embeddings
+                and generate an answer based on the retrieved context.
+              example: "tôi muốn mua hoa màu vàng cho ngày của mẹ"
       
       - name: user_id
         in: query
@@ -727,6 +744,7 @@ def get_answer():
         description: |
           Optional user identifier for tracking and analytics purposes.
           Used for Langfuse tracing to associate queries with specific users.
+          If provided, the chat history will be saved to the database.
         example: "user_12345"
       
       - name: session_id
@@ -744,9 +762,13 @@ def get_answer():
         required: false
         description: |
           Optional image URL for image-based product search.
-          If provided, the system will encode the image and compare it with product embeddings
-          using cosine similarity, then combine with text-based similarity scores.
-        example: "https://example.com/flower-image.jpg"
+          If provided, the system will:
+          1. Encode the image using Jina Embeddings v4
+          2. Compute cosine similarity between image embedding and product text embeddings
+          3. Combine image similarity scores with text-to-text similarity scores
+          4. Rerank the combined results using Jina Rerank v3
+          5. Use the reranked results as context for answer generation
+        example: "https://cdn.pixabay.com/photo/2023/03/14/11/19/flower-7852094_1280.jpg"
 
     responses:
       200:
@@ -763,7 +785,7 @@ def get_answer():
             message: "Chúng tôi có nhiều loại hoa màu vàng đẹp cho ngày của mẹ, bao gồm hoa hướng dương, hoa cúc vàng, và hoa hồng vàng..."
       
       400:
-        description: Bad request - Missing query parameter, query too long (exceeds 600 tokens), or inappropriate content detected
+        description: Bad request - Missing query in body, request body must be JSON, query too long (exceeds 600 tokens), or inappropriate content detected
         schema:
           type: object
           properties:
@@ -772,21 +794,22 @@ def get_answer():
               description: Error message explaining what went wrong
         examples:
           application/json:
+            - message: "Request body must be JSON"
             - message: "Missing query parameter 'query'"
             - message: "Query quá dài. Giới hạn là 600 tokens, nhưng query của bạn có 650 tokens. Vui lòng rút ngắn câu hỏi."
             - message: "Câu hỏi chứa nội dung không phù hợp"
       
       404:
-        description: Product not found
+        description: Product or category not found
         schema:
           type: object
           properties:
             message:
               type: string
-              description: Message indicating no relevant products were found
+              description: Message indicating no relevant products or categories were found
         examples:
           application/json:
-            message: "Chúng tôi không thể tìm thấy sản phẩm nào phù hợp với mô tả của bạn!"
+            message: "Chúng tôi không tìm thấy sản phẩm nào cho danh mục Hoa sinh nhật!"
       
       500:
         description: Internal server error - System error or inappropriate response generated
@@ -805,12 +828,17 @@ def get_answer():
     consumes:
       - application/json
     """
+    data = request.get_json()
+    if not data:
+        return jsonify({'message': 'Request body must be JSON'}), 400
+    query = data.get('query')
+
     # Get optional tracking parameters
     user_id = request.args.get('user_id') or None
     session_id = request.args.get('session_id') or None
 
     # Get query and optional image_url from query parameters
-    query = request.args.get('query')
+    #query = request.args.get('query')
     user_chat = query
     image_url = request.args.get('image_url') or None
 
@@ -1166,7 +1194,7 @@ def get_chat_history():
         examples:
           application/json:
             message: "No chat history found for this user"
-            user_id: "user_12345"
+            user_id: "12345"
       
       500:
         description: Internal server error
