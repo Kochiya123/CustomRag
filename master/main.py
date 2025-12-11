@@ -939,7 +939,7 @@ def get_answer():
             # Context format: (product_id, product_text, score) or (product_id, product_text)
             if isinstance(context, list) and context:
                 formatted_products = []
-                for product in context[:10]:  # Limit to top 10
+                for product in context[:5]:  # Limit to top 10
                     # Handle both formats: (product_id, product_text, score) or (product_id, product_text)
                     if len(product) >= 2:
                         product_id = product[0]  # product_id is always first element

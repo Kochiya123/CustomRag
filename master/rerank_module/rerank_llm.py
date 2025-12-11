@@ -142,4 +142,4 @@ class Rerank:
         reranked_all = self.rerank_query(query, all_products)
 
         # Return top 10: format is (product_id, product_text, score)
-        return reranked_all[:10]
+        return reranked_all[:5]

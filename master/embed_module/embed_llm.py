@@ -376,7 +376,7 @@ class Embed_llm:
             product_scores.sort(key=lambda x: x[1], reverse=True)
             
             # Get top 10 products
-            top_10_products = product_scores[:10]
+            top_10_products = product_scores[:5]
 
             # Query database to get product_text for each product_id
             result = []
