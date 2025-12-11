@@ -736,39 +736,38 @@ def get_answer():
                 Maximum length: 600 tokens. The system will search for relevant products using vector embeddings
                 and generate an answer based on the retrieved context.
               example: "tôi muốn mua hoa màu vàng cho ngày của mẹ"
-      
-      - name: user_id
-        in: query
-        type: string
-        required: false
-        description: |
-          Optional user identifier for tracking and analytics purposes.
-          Used for Langfuse tracing to associate queries with specific users.
-          If provided, the chat history will be saved to the database.
-        example: "user_12345"
-      
-      - name: session_id
-        in: query
-        type: string
-        required: false
-        description: |
-          Optional session identifier for tracking conversation sessions.
-          Used for Langfuse tracing to group related queries in a session.
-        example: "session_abc123"
-      
-      - name: image_url
-        in: query
-        type: string
-        required: false
-        description: |
-          Optional image URL for image-based product search.
-          If provided, the system will:
-          1. Encode the image using Jina Embeddings v4
-          2. Compute cosine similarity between image embedding and product text embeddings
-          3. Combine image similarity scores with text-to-text similarity scores
-          4. Rerank the combined results using Jina Rerank v3
-          5. Use the reranked results as context for answer generation
-        example: "https://cdn.pixabay.com/photo/2023/03/14/11/19/flower-7852094_1280.jpg"
+            user_id:
+              type: string
+              required: false
+              description: |
+                Optional user identifier for tracking and analytics purposes.
+                Used for Langfuse tracing to associate queries with specific users.
+                If provided, the chat history will be saved to the database.
+              example: "user_12345"
+            session_id:
+              type: string
+              required: false
+              description: |
+                Optional session identifier for tracking conversation sessions.
+                Used for Langfuse tracing to group related queries in a session.
+              example: "session_abc123"
+            image_url:
+              type: string
+              required: false
+              description: |
+                Optional image URL for image-based product search.
+                If provided, the system will:
+                1. Encode the image using Jina Embeddings v4
+                2. Compute cosine similarity between image embedding and product text embeddings
+                3. Combine image similarity scores with text-to-text similarity scores
+                4. Rerank the combined results using Jina Rerank v3
+                5. Use the reranked results as context for answer generation
+              example: "https://cdn.pixabay.com/photo/2023/03/14/11/19/flower-7852094_1280.jpg"
+        example:
+          query: "tôi muốn mua hoa màu vàng cho ngày của mẹ"
+          user_id: "user_12345"
+          session_id: "session_abc123"
+          image_url: "https://cdn.pixabay.com/photo/2023/03/14/11/19/flower-7852094_1280.jpg"
 
     responses:
       200:
@@ -794,10 +793,7 @@ def get_answer():
               description: Error message explaining what went wrong
         examples:
           application/json:
-            - message: "Request body must be JSON"
-            - message: "Missing query parameter 'query'"
-            - message: "Query quá dài. Giới hạn là 600 tokens, nhưng query của bạn có 650 tokens. Vui lòng rút ngắn câu hỏi."
-            - message: "Câu hỏi chứa nội dung không phù hợp"
+            message: "Request body must be JSON"
       
       404:
         description: Product or category not found
@@ -832,15 +828,19 @@ def get_answer():
     if not data:
         return jsonify({'message': 'Request body must be JSON'}), 400
     query = data.get('query')
+    user_id = data.get("user_id") or None
+    session_id = data.get("session_id") or None
+    image_url = data.get("image_url") or None
+
 
     # Get optional tracking parameters
-    user_id = request.args.get('user_id') or None
-    session_id = request.args.get('session_id') or None
+    #user_id = request.args.get('user_id') or None
+    #session_id = request.args.get('session_id') or None
+    #image_url = request.args.get('image_url') or None
 
     # Get query and optional image_url from query parameters
     #query = request.args.get('query')
     user_chat = query
-    image_url = request.args.get('image_url') or None
 
     context = []
     
