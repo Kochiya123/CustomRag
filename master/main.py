@@ -811,6 +811,7 @@ def get_answer():
 
     # Get query and optional image_url from query parameters
     query = request.args.get('query')
+    user_chat = query
     image_url = request.args.get('image_url') or None
 
     context = []
@@ -1075,7 +1076,7 @@ def get_answer():
     # Save chat history to database only if user_id is provided
     if user_id:
         try:
-            save_chat_history(cur, conn, user_id, session_id, query, answer)
+            save_chat_history(cur, conn, user_id, session_id, user_chat, answer)
         except Exception as e:
             print(f"Warning: Failed to save chat history: {str(e)}")
             # Continue even if saving fails - don't break the API response
