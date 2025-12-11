@@ -22,7 +22,7 @@ def build_context(products):
     context_lines = []
     for p in products:
             # Legacy format: (product_name, product_text, price)
-            product_name, product_text, price = p
+            product_id, product_name, product_text, price = p
             context_lines.append(f"- {product_name} (${price}): {product_text}")
     return "\n".join(context_lines)
 

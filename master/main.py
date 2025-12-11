@@ -841,7 +841,7 @@ def get_answer():
         # Format reranked results
         if isinstance(context, list) and context:
             formatted_products = []
-            for product in context[:10]:  # Limit to top 10
+            for product in context[:5]:  # Limit to top 10
                 if len(product) >= 2:
                     product_id = product[0]
                     product_text = product[1]
