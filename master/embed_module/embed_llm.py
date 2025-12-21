@@ -54,12 +54,12 @@ class Embed_llm:
     def encode_text(self, texts, task="retrieval.passage", return_numpy=True):
         """
         Encode text(s) using Jina Embeddings v4 API.
-        
+
         Args:
             texts: str or list of str - text(s) to encode
             task: str - task type (default: "retrieval.passage" for documents, use "retrieval.query" for queries)
             return_numpy: bool - whether to return numpy array (default: True)
-        
+
         Returns:
             numpy array of embeddings
         """
@@ -349,43 +349,21 @@ class Embed_llm:
                 texts = query,
                 task = "retrieval.query",
                 return_numpy = True,
-            )).reshape(1, -1)
+            )).squeeze().astype(np.float16).tolist()
 
-            cur.execute("select id, embedding_text from product_vector where embedding_text IS NOT NULL")
+            cur.execute("select id, product_id, product_text ,1- (embedding <=> %s) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (query_embedding,))
             rows = cur.fetchall()
-
-            # Extract product_id and embeddings separately
-            product_ids = []
-            flower_vectors = []
-            
-            for row in rows:
-                product_id = row[0]  # product_id is first column
-                embedding_text = row[1]  # embedding_text is second column
-                product_ids.append(product_id)
-                flower_vectors.append(np.array(ast.literal_eval(embedding_text)).reshape(-1))
-            
-            flower_vectors = np.array(flower_vectors)
-
-            # Compute cosine similarity
-            similarities = cosine_similarity(query_embedding, flower_vectors)
-
-            # Create list of (product_id, similarity_score) tuples
-            product_scores = [(product_ids[i], float(similarities[i])) for i in range(len(product_ids))]
-
-            # Sort by similarity score (descending)
-            product_scores.sort(key=lambda x: x[1], reverse=True)
-            
-            # Get top 10 products
-            top_10_products = product_scores[:5]
 
             # Query database to get product_text for each product_id
             result = []
-            for product_id, score in top_10_products:
-                cur.execute("select product_id, product_text from product_vector where id = %s", (product_id,))
-                row = cur.fetchone()
-                if row:
-                    # Return tuple: (product_id, product_text, similarity_score)
-                    result.append((row[0], row[1], score))
+            for row in rows:
+                id, product_id, text, similarity = row
+                combined_result = {
+                    product_id: product_id,
+                    text: text,
+                    similarity: float(similarity),
+                }
+                result.append(combined_result)
 
             return result
         except(Exception, psycopg2.DatabaseError) as error:
@@ -611,7 +589,7 @@ class Embed_llm:
                 cur.execute(f"select product_id, product_text from product_vector where price {preference} %s",price)
                 products = cur.fetchall()
             elif price:
-                cur.execute("select product_id, product_text from product_vector where price = %s and ",price)
+                cur.execute("select product_id, product_text from product_vector where price = %s and ", price)
                 products = cur.fetchall()
             else:
                 product_vector = self.retrieval_vector_product(cur, conn, query)

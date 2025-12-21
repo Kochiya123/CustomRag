@@ -988,7 +988,7 @@ def get_answer():
                 else:
                     context = ""
             messages = build_message(context, query)
-    elif info.get('intent') == "delivery_info":
+    else:
         # General information - use embedding-based retrieval
         general_info = embed.embedded_retrieve_general_information(cur, conn, query)
         if general_info:
@@ -998,102 +998,7 @@ def get_answer():
         else:
             context = ""
         messages = build_message(context, query)
-    else:
-        # All other queries - use embedding-based retrieval
-        # Use retrieval_vector_product to get products via embedding similarity
-        text_results = embed.retrieval_vector_product(cur, conn, query)
-        
-        # If image_url is provided, compute image-text similarity and combine
-        if image_url:
-            try:
-                # Compute image-to-text similarity
-                image_results = embed.compute_image_text_similarity(cur, conn, image_url)
-                
-                # Combine text and image results
-                # text_results format: (product_id, product_text) or (product_id, product_text, score)
-                # image_results format: (product_id, product_text, similarity_score)
-                
-                # Convert text_results to consistent format with scores
-                text_results_with_scores = []
-                for item in text_results if isinstance(text_results, list) else []:
-                    if len(item) >= 2:
-                        product_id = item[0]
-                        product_text = item[1]
-                        score = item[2] if len(item) >= 3 else 0.5
-                        text_results_with_scores.append((product_id, product_text, score))
-                
-                # Combine both results: merge by product_id and average scores
-                combined_results = {}
-                
-                # Add text results
-                for product_id, product_text, score in text_results_with_scores:
-                    combined_results[product_id] = {
-                        'product_id': product_id,
-                        'product_text': product_text,
-                        'text_score': score,
-                        'image_score': 0.0,
-                        'combined_score': score
-                    }
-                
-                # Add/update with image results
-                for product_id, product_text, image_score in image_results:
-                    if product_id in combined_results:
-                        combined_results[product_id]['image_score'] = image_score
-                        combined_results[product_id]['combined_score'] = (
-                            combined_results[product_id]['text_score'] + image_score
-                        ) / 2.0
-                    else:
-                        combined_results[product_id] = {
-                            'product_id': product_id,
-                            'product_text': product_text,
-                            'text_score': 0.0,
-                            'image_score': image_score,
-                            'combined_score': image_score
-                        }
-                
-                # Convert to list and sort by combined_score
-                combined_list = list(combined_results.values())
-                combined_list.sort(key=lambda x: x['combined_score'], reverse=True)
-                
-                # Rerank the combined results
-                rerank_data = [(item['product_id'], item['product_text']) for item in combined_list]
-                
-                if rerank_data:
-                    reranked_results = reranker.rerank_query(query, rerank_data)
-                    context = reranked_results
-                else:
-                    context = text_results
-            except Exception as e:
-                print(f"Error processing image: {e}")
-                context = text_results
-        else:
-            # No image, rerank text results
-            if text_results:
-                context = reranker.rerank_query(query, text_results)
-            else:
-                context = []
-        print(context)
-        # Format reranked results
-        if isinstance(context, list) and context:
-            formatted_products = []
-            for product in context[:10]:  # Limit to top 10
-                if len(product) >= 2:
-                    product_id = product[0]
-                    product_text = product[1]
-                    # Fetch product_name and price from database using product_id
-                    cur.execute(
-                        "SELECT product_name, price FROM product_vector WHERE product_id = %s",
-                        (product_id,)
-                    )
-                    result = cur.fetchone()
-                    if result:
-                        product_name, price = result
-                        formatted_products.append((product_id, product_name, product_text, price))
-            if formatted_products:
-                context = build_context(formatted_products)
-            else:
-                context = ""
-        messages = build_message(context, query)
+
 
     # Generate answer using LLM
     answer = generator.generate_answer(messages, session_id, user_id)

@@ -13,6 +13,7 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "shop có hoa gì": "all_flowers",
         "những loại hoa nào": "all_flowers",
         "có những hoa gì": "all_flowers",
+        "hoa": "all_flowers",
 
         # General category/occasion inquiries
         "dịp nào": "all_categories",
