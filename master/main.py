@@ -862,7 +862,7 @@ def get_answer():
     context = ""
     
     # Route all queries through embedding-based retrieval
-    if info['category']:
+    if info['category'] or info['intent'] == "all_categories":
         # Category-based query - use embedding-based retrieval with category filtering
         context = embed.embedded_retrieve_category_information(cur, conn, query, info['category'])
         if not context:
@@ -888,7 +888,7 @@ def get_answer():
             else:
                 context = ""
         messages = build_message(context, query)
-    elif info['flower']:
+    elif info['flower'] or info['intent'] == "all_flowers":
             # Get text-based retrieval results
             text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
             

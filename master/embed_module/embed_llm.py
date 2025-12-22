@@ -184,7 +184,7 @@ class Embed_llm:
                     task = "retrieval.passage",
                     return_numpy = True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
+                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
                 cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, flower_id))
         except(Exception, psycopg2.DatabaseError) as error:
@@ -205,7 +205,7 @@ class Embed_llm:
                     task = "retrieval.passage",
                     return_numpy = True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
+                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
                 cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, flower_id))
         except(Exception, psycopg2.DatabaseError) as error:
@@ -227,7 +227,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 return_numpy=True,
             )
-            text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
+            text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
             cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, id))
 
@@ -253,7 +253,7 @@ class Embed_llm:
                     task="retrieval.passage",
                     return_numpy=True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
+                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
                 cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, id))
 
@@ -272,7 +272,7 @@ class Embed_llm:
                     task="retrieval.passage",
                     return_numpy=True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
+                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
             cur.execute('Insert into product_vector (product_id, category_id, price, product_text, product_name, embedding_text) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, product_name, text_embedding))
             conn.commit()
@@ -296,7 +296,7 @@ class Embed_llm:
                     task="retrieval.passage",
                     return_numpy=True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float16).tolist()
+                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
             fields = []
             values = []
@@ -349,9 +349,9 @@ class Embed_llm:
                 texts = query,
                 task = "retrieval.query",
                 return_numpy = True,
-            )).squeeze().astype(np.float16).tolist()
+            )).squeeze().astype(np.float32).tolist()
 
-            cur.execute("select id, product_id, product_text ,1- (embedding <=> %s) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (query_embedding,))
+            cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s:vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (query_embedding,))
             rows = cur.fetchall()
 
             # Query database to get product_text for each product_id
@@ -380,7 +380,7 @@ class Embed_llm:
                 task = "retrieval.passage",
                 return_numpy = True,
             ))
-            category_embedding = category_embedding.squeeze().astype(np.float16).tolist()
+            category_embedding = category_embedding.squeeze().astype(np.float32).tolist()
 
             cur.execute('Insert into category_vector (category_id, category_name, category_embedding) values (%s, %s, %s) returning id', (category_id, category_text, category_embedding))
             id = cur.fetchone()[0]
@@ -402,7 +402,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 return_numpy=True,
             ))
-            category_embedding = category_embedding.squeeze().astype(np.float16).tolist()
+            category_embedding = category_embedding.squeeze().astype(np.float32).tolist()
 
             fields = []
             values = []
@@ -451,7 +451,7 @@ class Embed_llm:
                 task = "retrieval.passage",
                 return_numpy = True,
             ))
-            delivery_information_embedding = delivery_information_embedding.squeeze().astype(np.float16).tolist()
+            delivery_information_embedding = delivery_information_embedding.squeeze().astype(np.float32).tolist()
             cur.execute("Insert into delivery_information (delivery_text, delivery_embedding) values (%s, %s) Returning delivery_id", (delivery_text, delivery_information_embedding))
             id = cur.fetchone()[0]
             conn.commit()
@@ -471,7 +471,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 return_numpy=True,
             ))
-            delivery_embedding = delivery_embedding.squeeze().astype(np.float16).tolist()
+            delivery_embedding = delivery_embedding.squeeze().astype(np.float32).tolist()
 
             fields = []
             values = []
@@ -742,7 +742,7 @@ class Embed_llm:
                 task = "retrieval.passage",
                 return_numpy = True,
             ))
-            general_embedding = general_embedding.squeeze().astype(np.float16).tolist()
+            general_embedding = general_embedding.squeeze().astype(np.float32).tolist()
             cur.execute("Insert into general_information (general_text, general_embedding) values (%s, %s) Returning general_id", (general_text, general_embedding))
             id = cur.fetchone()[0]
             conn.commit()
@@ -762,7 +762,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 return_numpy=True,
             ))
-            general_embedding = general_embedding.squeeze().astype(np.float16).tolist()
+            general_embedding = general_embedding.squeeze().astype(np.float32).tolist()
 
             fields = []
             values = []
@@ -868,54 +868,28 @@ class Embed_llm:
             # Encode the image
             image_embedding = self.encode_image(image_url)
             if image_embedding is None:
-                return []
+                print("None")
             
-            image_embedding = image_embedding.reshape(1, -1)
+            image_embedding = image_embedding.squeeze().astype(np.float32).tolist()
             
             # Get all product embeddings from database
-            cur.execute("SELECT id, product_text, embedding_text FROM product_vector WHERE embedding_text IS NOT NULL")
+            cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s::vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (image_embedding,))
             rows = cur.fetchall()
-            
-            if not rows:
-                return []
-            
-            # Extract product IDs, texts, and embeddings
-            product_ids = []
-            product_texts = []
-            product_embeddings = []
-            
-            for row in rows:
-                product_id, product_text, embedding_text = row
-                product_ids.append(product_id)
-                product_texts.append(product_text)
-                try:
-                    embedding = np.array(ast.literal_eval(embedding_text)).reshape(-1)
-                    product_embeddings.append(embedding)
-                except Exception as e:
-                    print(f"Error parsing embedding for product {product_id}: {e}")
-                    continue
-            
-            if not product_embeddings:
-                return []
-            
-            product_embeddings = np.array(product_embeddings)
 
-            print(product_ids)
-            print(product_texts)
-            
-            # Compute cosine similarity
-            similarities = cosine_similarity(image_embedding, product_embeddings)
-            
-            # Create list of tuples: (product_id, product_text, similarity_score)
-            results = []
-            for i, (product_id, product_text) in enumerate(zip(product_ids, product_texts)):
-                if i < len(similarities):
-                    results.append((product_id, product_text, float(similarities[i])))
+            result = []
+            for row in rows:
+                id, product_id, text, similarity = row
+                combined_result = {
+                    product_id: product_id,
+                    text: text,
+                    similarity: float(similarity),
+                }
+                result.append(combined_result)
             
             # Sort by similarity (descending)
-            results.sort(key=lambda x: x[2], reverse=True)
+            result.sort(key=lambda x: x[2], reverse=True)
             
-            return results
+            return result
         except Exception as e:
             print(f"Error computing image-text similarity: {e}")
             return []
