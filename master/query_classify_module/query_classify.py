@@ -99,6 +99,23 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "intent": None,  # New field for intent detection
     }
 
+    price_patterns = [
+        # Match "1tr5" or "1.5tr" (1.5 million)
+        (r'(\d+)(?:tr|triệu)(\d+)', lambda m: int(m.group(1)) * 1000000 + int(m.group(2)) * 100000),
+
+        # Match "1.5tr" or "1,5tr" (1.5 million with decimal)
+        (r'(\d+)[.,](\d+)\s?(?:tr|triệu)', lambda m: int(m.group(1)) * 1000000 + int(m.group(2)) * 100000),
+
+        # Match "10tr" or "10 triệu" (millions)
+        (r'(\d+)\s?(?:tr|triệu)', lambda m: int(m.group(1)) * 1000000),
+
+        # Match "500k" or "500 ngàn" (thousands)
+        (r'(\d+)\s?(?:k|ngàn)', lambda m: int(m.group(1)) * 1000),
+
+        # Match plain numbers with VND
+        (r'(\d+)\s?(?:đ|vnd|dong)', lambda m: int(m.group(1))),
+    ]
+
     # Normalize query
     query = user_query.lower()
 
@@ -109,10 +126,10 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
             break  # Stop after first match
 
     # 1. Extract price (regex for numbers + "k/ngàn/đ")
-    price_match = re.search(r'(\d+)\s?(k|ngàn|đ|vnd|tr)', query)
-    if price_match:
-        value = int(price_match.group(1)) * (1000 if price_match.group(2) in ["k", "ngàn"] else 1000000 if price_match.group(2) in ["tr"] else 1)
-        info["price"] = value
+    for pattern, converter in price_patterns:
+        match = re.search(pattern, query)
+        if match:
+            info["price"] = converter(match)
 
     for word in preference_map:
         if word in query:

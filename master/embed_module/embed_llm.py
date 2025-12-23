@@ -285,7 +285,6 @@ class Embed_llm:
                 text_embedding = self.encode_text(
                     texts=product_string,
                     task="retrieval.passage",
-                    
                 )
 
             fields = []
@@ -568,20 +567,22 @@ class Embed_llm:
 
     def embedded_retrieve_products_information(self, cur, conn, query, preference, flower, price):
         try:
+            convert_price = str(price)
             products = []
             product_vector = []
             result = []
             reranker = Rerank()
-            if price & preference:
-                cur.execute(f"select product_id, product_text from product_vector where price {preference} %s",price)
+            if price is not None and preference is not None:
+                cur.execute(f"select product_id, product_text from product_vector where price {preference} %s", (
+                    convert_price,))
                 products = cur.fetchall()
             elif price:
-                cur.execute("select product_id, product_text from product_vector where price = %s and ", price)
+                cur.execute("select product_id, product_text from product_vector where price = %s", (convert_price,))
                 products = cur.fetchall()
             else:
                 product_vector = self.retrieval_vector_product(cur, conn, query)
 
-            if products & product_vector:
+            if products is not None and product_vector is not None:
                 result = reranker.combine_and_rerank_together(query, products, product_vector)
             elif products:
                 result = reranker.rerank_query(query, products)

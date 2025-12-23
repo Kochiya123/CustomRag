@@ -888,7 +888,7 @@ def get_answer():
             else:
                 context = ""
         messages = build_message(context, query)
-    elif info['flower'] or info['intent'] == "all_flowers":
+    elif info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info":
             # Get text-based retrieval results
             text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
             
