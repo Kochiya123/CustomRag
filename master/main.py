@@ -991,12 +991,12 @@ def get_answer():
     else:
         # General information - use embedding-based retrieval
         general_info = embed.embedded_retrieve_general_information(cur, conn, query)
+        context = []
         if general_info:
             # general_info is a tuple from database, extract the text field
             # Assuming structure: (general_id, general_text, general_embedding)
-            context = general_info[1] if len(general_info) > 1 else str(general_info)
-        else:
-            context = ""
+            for row in general_info:
+                context.append(row[1] if len(row) > 1 else str(row))
         messages = build_message(context, query, image_url)
 
 

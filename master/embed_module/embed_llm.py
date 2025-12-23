@@ -334,10 +334,10 @@ class Embed_llm:
 
     def retrieval_vector_product(self, cur, conn, query):
         try:
-            query_embedding = np.array(self.encode_text(
+            query_embedding = self.encode_text(
                 texts = query,
                 task = "retrieval.query",
-            ))
+            )
 
             cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s:vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (query_embedding,))
             rows = cur.fetchall()
@@ -363,10 +363,10 @@ class Embed_llm:
 
     def embedded_add_single_category(self, cur, conn, category_id, category_text):
         try:
-            category_embedding = np.array(self.encode_text(
+            category_embedding = self.encode_text(
                 texts = category_text,
                 task = "retrieval.passage",
-            ))
+            )
             category_embedding = category_embedding
 
             cur.execute('Insert into category_vector (category_id, category_name, category_embedding) values (%s, %s, %s) returning id', (category_id, category_text, category_embedding))
@@ -384,11 +384,11 @@ class Embed_llm:
 
     def embedded_update_single_category(self, cur, conn, category_id, category_text):
         try:
-            category_embedding = np.array(self.encode_text(
+            category_embedding = self.encode_text(
                 texts=category_text,
                 task="retrieval.passage",
                 
-            ))
+            )
             category_embedding = category_embedding
 
             fields = []
@@ -804,11 +804,11 @@ class Embed_llm:
             result = []
             for row in rows:
                 general_id, text, similarity = row
-                combined_result = {
-                    general_id: general_id,
-                    text: text,
-                    similarity: float(similarity),
-                }
+                combined_result = [
+                    general_id,
+                    text,
+                    float(similarity),
+                ]
                 result.append(combined_result)
 
             return result
