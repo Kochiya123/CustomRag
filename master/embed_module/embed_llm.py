@@ -51,7 +51,7 @@ class Embed_llm:
         self.model_name = "jina-embeddings-v4"
         print("Jina Embeddings API initialized")
 
-    def encode_text(self, texts, task="retrieval.passage", return_numpy=True):
+    def encode_text(self, texts, task="retrieval.passage"):
         """
         Encode text(s) using Jina Embeddings v4 API.
 
@@ -83,15 +83,8 @@ class Embed_llm:
             response.raise_for_status()
             result = response.json()
             
-            # Extract embeddings from response
-            embeddings = [item["embedding"] for item in result["data"]]
-            
-            if return_numpy:
-                embeddings = np.array(embeddings)
-                # If single text, squeeze to remove batch dimension
-                if len(texts) == 1:
-                    embeddings = embeddings.squeeze(0)
-            return embeddings
+            embedding = np.array(result["data"][0]["embedding"])
+            return embedding.tolist()
         except requests.exceptions.RequestException as e:
             print(f"Error calling Jina API: {e}")
             if hasattr(e, 'response') and e.response is not None:
@@ -137,7 +130,6 @@ class Embed_llm:
             query_embedding = np.array(self.encode_text(
                 texts = query,
                 task = "retrieval.query",
-                return_numpy = True,
             )).reshape(1, -1)
 
             cur.execute("select vector from Flower where vector IS NOT NULL")
@@ -225,7 +217,7 @@ class Embed_llm:
             text_embedding = self.encode_text(
                 texts=text,
                 task="retrieval.passage",
-                return_numpy=True,
+                
             )
             text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
@@ -251,7 +243,7 @@ class Embed_llm:
                 text_embedding = self.encode_text(
                     texts=text,
                     task="retrieval.passage",
-                    return_numpy=True,
+                    
                 )
                 text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
@@ -270,9 +262,8 @@ class Embed_llm:
                 text_embedding = self.encode_text(
                     texts=product_string,
                     task="retrieval.passage",
-                    return_numpy=True,
+                    
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
             cur.execute('Insert into product_vector (product_id, category_id, price, product_text, product_name, embedding_text) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, product_name, text_embedding))
             conn.commit()
@@ -294,9 +285,8 @@ class Embed_llm:
                 text_embedding = self.encode_text(
                     texts=product_string,
                     task="retrieval.passage",
-                    return_numpy=True,
+                    
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
 
             fields = []
             values = []
@@ -348,8 +338,7 @@ class Embed_llm:
             query_embedding = np.array(self.encode_text(
                 texts = query,
                 task = "retrieval.query",
-                return_numpy = True,
-            )).squeeze().astype(np.float32).tolist()
+            ))
 
             cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s:vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (query_embedding,))
             rows = cur.fetchall()
@@ -378,7 +367,6 @@ class Embed_llm:
             category_embedding = np.array(self.encode_text(
                 texts = category_text,
                 task = "retrieval.passage",
-                return_numpy = True,
             ))
             category_embedding = category_embedding.squeeze().astype(np.float32).tolist()
 
@@ -400,7 +388,7 @@ class Embed_llm:
             category_embedding = np.array(self.encode_text(
                 texts=category_text,
                 task="retrieval.passage",
-                return_numpy=True,
+                
             ))
             category_embedding = category_embedding.squeeze().astype(np.float32).tolist()
 
@@ -449,7 +437,6 @@ class Embed_llm:
             delivery_information_embedding = np.array(self.encode_text(
                 texts = delivery_text,
                 task = "retrieval.passage",
-                return_numpy = True,
             ))
             delivery_information_embedding = delivery_information_embedding.squeeze().astype(np.float32).tolist()
             cur.execute("Insert into delivery_information (delivery_text, delivery_embedding) values (%s, %s) Returning delivery_id", (delivery_text, delivery_information_embedding))
@@ -469,7 +456,7 @@ class Embed_llm:
             delivery_embedding = np.array(self.encode_text(
                 texts=delivery_text,
                 task="retrieval.passage",
-                return_numpy=True,
+                
             ))
             delivery_embedding = delivery_embedding.squeeze().astype(np.float32).tolist()
 
@@ -740,7 +727,6 @@ class Embed_llm:
             general_embedding = np.array(self.encode_text(
                 texts = general_text,
                 task = "retrieval.passage",
-                return_numpy = True,
             ))
             general_embedding = general_embedding.squeeze().astype(np.float32).tolist()
             cur.execute("Insert into general_information (general_text, general_embedding) values (%s, %s) Returning general_id", (general_text, general_embedding))
@@ -760,7 +746,7 @@ class Embed_llm:
             general_embedding = np.array(self.encode_text(
                 texts=general_text,
                 task="retrieval.passage",
-                return_numpy=True,
+                
             ))
             general_embedding = general_embedding.squeeze().astype(np.float32).tolist()
 
@@ -854,7 +840,7 @@ class Embed_llm:
         text_embedding = np.array(self.encode_text(
             texts=text,
             task="retrieval.query",
-            return_numpy=True,
+            
         ))
         return text_embedding
 
