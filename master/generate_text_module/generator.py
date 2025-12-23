@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from langfuse import Langfuse, observe, get_client, propagate_attributes
 from openai import OpenAI
+from openai.types.beta.threads import image_url
 
 load_dotenv()
 
@@ -38,7 +39,7 @@ def build_category_context(categories):
     return context
 
 
-def build_message(context, prompt_input):
+def build_message(context, prompt_input, image_link):
     """
     Build OpenAI chat format messages from context and prompt.
     Returns a list of message dictionaries for OpenAI API.
@@ -48,6 +49,7 @@ def build_message(context, prompt_input):
         f"You are providing recommendation for the customer about different type of flowers based on their given input. "
         f"Prioritize asking the customer for personal liking first, then give suggestion based on that. "
         f"Your answer must be based on the flower products provided as follow: {context} "
+        f"Image link will be provided as follow if present: {image_link}"
         f"Removed any unnecessary or unnatural information or  included in context. "
         f"When the customer asks a general question like: Shop bạn bán những loại hoa nào or Bạn có thể liệt kê giúp tôi một số loại hoa, "
         f"you should: "
@@ -67,6 +69,7 @@ def build_message(context, prompt_input):
     messages = [
         {"role": "system", "content": system_content},
         {"role": "user", "content": prompt_input}
+
     ]
     
     return messages

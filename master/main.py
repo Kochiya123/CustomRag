@@ -887,7 +887,7 @@ def get_answer():
                 context = build_context(formatted_products)
             else:
                 context = ""
-        messages = build_message(context, query)
+        messages = build_message(context, query, image_url)
     elif info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info":
             # Get text-based retrieval results
             text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
@@ -987,7 +987,7 @@ def get_answer():
                     context = build_context(formatted_products)
                 else:
                     context = ""
-            messages = build_message(context, query)
+            messages = build_message(context, query, image_url)
     else:
         # General information - use embedding-based retrieval
         general_info = embed.embedded_retrieve_general_information(cur, conn, query)
@@ -997,7 +997,7 @@ def get_answer():
             context = general_info[1] if len(general_info) > 1 else str(general_info)
         else:
             context = ""
-        messages = build_message(context, query)
+        messages = build_message(context, query, image_url)
 
 
     # Generate answer using LLM

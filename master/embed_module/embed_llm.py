@@ -117,7 +117,7 @@ class Embed_llm:
             
             # Extract embedding from response
             embedding = np.array(result["data"][0]["embedding"])
-            return embedding
+            return embedding.tolist()
             
         except Exception as e:
             print(f"Error processing image from URL {image_url}: {e}")
@@ -176,7 +176,7 @@ class Embed_llm:
                     task = "retrieval.passage",
                     return_numpy = True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
+                text_embedding = text_embedding
 
                 cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, flower_id))
         except(Exception, psycopg2.DatabaseError) as error:
@@ -197,7 +197,7 @@ class Embed_llm:
                     task = "retrieval.passage",
                     return_numpy = True,
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
+                text_embedding = text_embedding
 
                 cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, flower_id))
         except(Exception, psycopg2.DatabaseError) as error:
@@ -219,7 +219,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 
             )
-            text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
+            text_embedding = text_embedding
 
             cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, id))
 
@@ -245,7 +245,7 @@ class Embed_llm:
                     task="retrieval.passage",
                     
                 )
-                text_embedding = text_embedding.squeeze().astype(np.float32).tolist()
+                text_embedding = text_embedding
 
                 cur.execute('Update Flower Set vector = %s where id = %s', (text_embedding, id))
 
@@ -367,7 +367,7 @@ class Embed_llm:
                 texts = category_text,
                 task = "retrieval.passage",
             ))
-            category_embedding = category_embedding.squeeze().astype(np.float32).tolist()
+            category_embedding = category_embedding
 
             cur.execute('Insert into category_vector (category_id, category_name, category_embedding) values (%s, %s, %s) returning id', (category_id, category_text, category_embedding))
             id = cur.fetchone()[0]
@@ -389,7 +389,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 
             ))
-            category_embedding = category_embedding.squeeze().astype(np.float32).tolist()
+            category_embedding = category_embedding
 
             fields = []
             values = []
@@ -437,7 +437,7 @@ class Embed_llm:
                 texts = delivery_text,
                 task = "retrieval.passage",
             ))
-            delivery_information_embedding = delivery_information_embedding.squeeze().astype(np.float32).tolist()
+            delivery_information_embedding = delivery_information_embedding
             cur.execute("Insert into delivery_information (delivery_text, delivery_embedding) values (%s, %s) Returning delivery_id", (delivery_text, delivery_information_embedding))
             id = cur.fetchone()[0]
             conn.commit()
@@ -457,7 +457,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 
             ))
-            delivery_embedding = delivery_embedding.squeeze().astype(np.float32).tolist()
+            delivery_embedding = delivery_embedding
 
             fields = []
             values = []
@@ -725,11 +725,10 @@ class Embed_llm:
 
     def embedded_add_general_information(self, cur, conn, general_text):
         try:
-            general_embedding = np.array(self.encode_text(
+            general_embedding = self.encode_text(
                 texts = general_text,
                 task = "retrieval.passage",
-            ))
-            general_embedding = general_embedding.squeeze().astype(np.float32).tolist()
+            )
             cur.execute("Insert into general_information (general_text, general_embedding) values (%s, %s) Returning general_id", (general_text, general_embedding))
             id = cur.fetchone()[0]
             conn.commit()
@@ -749,7 +748,7 @@ class Embed_llm:
                 task="retrieval.passage",
                 
             ))
-            general_embedding = general_embedding.squeeze().astype(np.float32).tolist()
+            general_embedding = general_embedding
 
             fields = []
             values = []
@@ -793,44 +792,25 @@ class Embed_llm:
 
     def embedded_retrieve_general_information(self, cur, conn, query):
         try:
-            query_embedding = self.general_embedding(query).reshape(1, -1)
+            query_embedding = self.encode_text(query)
 
             # Select both id and embedding to get the ID for later retrieval
             # Note: PostgreSQL vector type may need special handling
-            cur.execute("select general_id, general_embedding from general_information where general_embedding IS NOT NULL")
-            general_vectors = cur.fetchall()
+            cur.execute(
+                "select general_id, general_text ,1- (general_embedding <=> %s::vector) as similarity from general_information where general_embedding IS NOT NULL order by similarity limit 5",
+                (query_embedding,))
+            rows = cur.fetchall()
 
-            if not general_vectors:
-                return None
+            result = []
+            for row in rows:
+                general_id, text, similarity = row
+                combined_result = {
+                    general_id: general_id,
+                    text: text,
+                    similarity: float(similarity),
+                }
+                result.append(combined_result)
 
-            # Extract IDs and embeddings separately
-            general_ids = [row[0] for row in general_vectors]
-            # Handle vector type - may be stored as array or string representation
-            general_embeddings = []
-            for row in general_vectors:
-                embedding = row[1]
-                # If it's a string representation, parse it
-                if isinstance(embedding, str):
-                    embedding = np.array(ast.literal_eval(embedding))
-                elif isinstance(embedding, (list, tuple)):
-                    embedding = np.array(embedding)
-                else:
-                    embedding = np.array(embedding)
-                general_embeddings.append(embedding.reshape(-1))
-            
-            general_embeddings = np.array(general_embeddings)
-
-            similarities = cosine_similarity(query_embedding, general_embeddings)
-
-            # Get index of highest similarity
-            best_idx = np.argmax(similarities)
-
-            # Get the actual database ID
-            best_db_id = general_ids[best_idx]
-
-            # Retrieve from database
-            cur.execute("SELECT * FROM general_information WHERE general_id = %s", (best_db_id,))
-            result = cur.fetchone()
             return result
         except (Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
@@ -854,10 +834,6 @@ class Embed_llm:
         try:
             # Encode the image
             image_embedding = self.encode_image(image_url)
-            if image_embedding is None:
-                print("None")
-            
-            image_embedding = image_embedding.squeeze().astype(np.float32).tolist()
             
             # Get all product embeddings from database
             cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s::vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (image_embedding,))
