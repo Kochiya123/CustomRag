@@ -256,14 +256,12 @@ class Embed_llm:
 
     def embedded_add_single_column_product(self, cur, conn, product_string, product_name, product_id, category_id, price):
         try:
-            text_embedding = []
 
-            if product_string:
-                text_embedding = self.encode_text(
-                    texts=product_string,
-                    task="retrieval.passage",
+            text_embedding = self.encode_text(
+                texts=product_string,
+                task="retrieval.passage",
                     
-                )
+            )
 
             cur.execute('Insert into product_vector (product_id, category_id, price, product_text, product_name, embedding_text) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, product_name, text_embedding))
             conn.commit()
