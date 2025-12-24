@@ -859,7 +859,6 @@ def get_answer():
         return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
 
     info = extract_info(cur,query)
-    context = ""
     
     # Route all queries through embedding-based retrieval
     if info['category'] or info['intent'] == "all_categories":
@@ -891,7 +890,7 @@ def get_answer():
     elif info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info":
             # Get text-based retrieval results
             text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
-            
+            print(text_results)
             # If image_url is provided, compute image-text similarity and combine
             if image_url:
                 try:
@@ -941,10 +940,9 @@ def get_answer():
                                 'image_score': image_score,
                                 'combined_score': image_score
                             }
-                    
+
                     # Convert to list and sort by combined_score
                     combined_list = list(combined_results.values())
-                    combined_list.sort(key=lambda x: x['combined_score'], reverse=True)
                     
                     # Rerank the combined results
                     # Prepare data for reranker: list of (product_id, product_text)

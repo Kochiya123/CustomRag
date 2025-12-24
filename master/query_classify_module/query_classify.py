@@ -14,6 +14,8 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "những loại hoa nào": "all_flowers",
         "có những hoa gì": "all_flowers",
         "hoa gì": "all_flowers",
+        "hoa": "all_flowers",
+        "sản phẩm": "all_flowers",
 
         # General category/occasion inquiries
         "dịp nào": "all_categories",
@@ -80,14 +82,15 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "giá đúng bằng": "=",
 
         # Range
-        "đến": "=",
-        "khoảng": "=",
-        "trong khoảng": "=",
-        "dao động": "=",
-        "nằm trong khoảng": "=",
-        "giá từ": "=",
-        "tới": "=",
-        "giữa": "="
+        "đến": "between",
+        "khoảng": "between",
+        "trong khoảng": "between",
+        "dao động": "between",
+        "nằm trong khoảng": "between",
+        "giá từ": "between",
+        "tới": "between",
+        "giữa": "between",
+        "tầm": "between",
     }
     info = {
         "flower": None,

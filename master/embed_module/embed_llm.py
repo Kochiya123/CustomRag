@@ -260,7 +260,6 @@ class Embed_llm:
             text_embedding = self.encode_text(
                 texts=product_string,
                 task="retrieval.passage",
-                    
             )
 
             cur.execute('Insert into product_vector (product_id, category_id, price, product_text, product_name, embedding_text) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, product_name, text_embedding))
@@ -336,19 +335,34 @@ class Embed_llm:
                 texts = query,
                 task = "retrieval.query",
             )
-
-            cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s:vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (query_embedding,))
+            threshold = 0.7
+            limit = 5
+            query = """
+                        SELECT * FROM (
+                            SELECT 
+                                id, 
+                                product_id, 
+                                product_text,
+                                1 - (embedding_text <=> %s::vector) as similarity
+                            FROM product_vector
+                            WHERE embedding_text IS NOT NULL
+                        ) subquery
+                        WHERE similarity >= %s
+                        ORDER BY similarity DESC
+                        LIMIT %s
+                    """
+            cur.execute(query, (query_embedding, threshold, limit))
             rows = cur.fetchall()
 
             # Query database to get product_text for each product_id
             result = []
             for row in rows:
                 id, product_id, text, similarity = row
-                combined_result = {
-                    product_id: product_id,
-                    text: text,
-                    similarity: float(similarity),
-                }
+                combined_result = [
+                    product_id,
+                    text,
+                    float(similarity),
+                ]
                 result.append(combined_result)
 
             return result
@@ -365,7 +379,6 @@ class Embed_llm:
                 texts = category_text,
                 task = "retrieval.passage",
             )
-            category_embedding = category_embedding
 
             cur.execute('Insert into category_vector (category_id, category_name, category_embedding) values (%s, %s, %s) returning id', (category_id, category_text, category_embedding))
             id = cur.fetchone()[0]
@@ -571,11 +584,18 @@ class Embed_llm:
             result = []
             reranker = Rerank()
             if price is not None and preference is not None:
-                cur.execute(f"select product_id, product_text from product_vector where price {preference} %s", (
-                    convert_price,))
-                products = cur.fetchall()
+                if preference.lower() == "between":
+                    price_min = int(price * 0.8)
+                    price_max = int(price * 1.2)
+                    sql = "SELECT product_id, product_text FROM product_vector WHERE price BETWEEN %s AND %s order by price desc limit 5"
+                    cur.execute(sql, (price_min, price_max))
+                    products = cur.fetchall()
+                else:
+                    cur.execute(f"select product_id, product_text from product_vector where price {preference} %s order by price limit 5", (
+                        convert_price,))
+                    products = cur.fetchall()
             elif price:
-                cur.execute("select product_id, product_text from product_vector where price = %s", (convert_price,))
+                cur.execute("select product_id, product_text from product_vector where price = %s limit 5", (convert_price,))
                 products = cur.fetchall()
             else:
                 product_vector = self.retrieval_vector_product(cur, conn, query)
@@ -585,7 +605,7 @@ class Embed_llm:
             elif products:
                 result = reranker.rerank_query(query, products)
             elif product_vector:
-                result = reranker.rerank_query(query, product_vector)
+                return product_vector
             else:
                 raise Exception('Cannot retrieve result from product vector table!')
             return result
@@ -697,7 +717,6 @@ class Embed_llm:
                         (category_id,)
                     )
                     products = cur.fetchall()
-            
             # Also do vector-based retrieval for the query
             products_vector = self.retrieval_vector_product(cur, conn, query)
             
@@ -705,7 +724,7 @@ class Embed_llm:
             if products_vector and products:
                 results = reranker.combine_and_rerank_together(query, products_vector, products)
             elif products_vector:
-                results = reranker.rerank_query(query, products_vector)
+                return products_vector
             elif products:
                 # If only category products exist, rerank them
                 results = reranker.rerank_query(query, products)
@@ -834,21 +853,34 @@ class Embed_llm:
             image_embedding = self.encode_image(image_url)
             
             # Get all product embeddings from database
-            cur.execute("select id, product_id, product_text ,1- (embedding_text <=> %s::vector) as similarity from product_vector where embedding_text IS NOT NULL order by similarity limit 5", (image_embedding,))
+            threshold = 0.6
+            limit = 5
+            query = """
+                                    SELECT * FROM (
+                                        SELECT 
+                                            id, 
+                                            product_id, 
+                                            product_text,
+                                            1 - (embedding_text <=> %s::vector) as similarity
+                                        FROM product_vector
+                                        WHERE embedding_text IS NOT NULL
+                                    ) subquery
+                                    WHERE similarity >= %s
+                                    ORDER BY similarity DESC
+                                    LIMIT %s
+                                """
+            cur.execute(query, (image_embedding, threshold, limit))
             rows = cur.fetchall()
 
             result = []
             for row in rows:
                 id, product_id, text, similarity = row
-                combined_result = {
-                    product_id: product_id,
-                    text: text,
-                    similarity: float(similarity),
-                }
+                combined_result = [
+                    product_id,
+                    text,
+                    float(similarity),
+                ]
                 result.append(combined_result)
-            
-            # Sort by similarity (descending)
-            result.sort(key=lambda x: x[2], reverse=True)
             
             return result
         except Exception as e:

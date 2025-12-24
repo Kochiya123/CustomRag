@@ -3,6 +3,9 @@ from dotenv import load_dotenv
 from langfuse import Langfuse, observe, get_client, propagate_attributes
 from openai import OpenAI
 from openai.types.beta.threads import image_url
+import base64
+import requests
+from io import BytesIO
 
 load_dotenv()
 
@@ -39,6 +42,22 @@ def build_category_context(categories):
     return context
 
 
+def encode_image_to_base64(image_source):
+    """
+    Convert image to base64 string.
+    image_source can be a URL or file path.
+    """
+    if image_source.startswith('http'):
+        # Download from URL
+        response = requests.get(image_source)
+        image_data = response.content
+    else:
+        # Read from file
+        with open(image_source, 'rb') as image_file:
+            image_data = image_file.read()
+
+    return base64.b64encode(image_data).decode('utf-8')
+
 def build_message(context, prompt_input, image_link):
     """
     Build OpenAI chat format messages from context and prompt.
@@ -46,10 +65,10 @@ def build_message(context, prompt_input, image_link):
     """
     system_content = (
         f"You are a helpful shop flower assistant, respectful and honest. "
-        f"You are providing recommendation for the customer about different type of flowers based on their given input. "
+        f"You are providing recommendation for the customer about different type of flower bouquets based on their given input. "
         f"Prioritize asking the customer for personal liking first, then give suggestion based on that. "
         f"Your answer must be based on the flower products provided as follow: {context} "
-        f"Image link will be provided as follow if present: {image_link}"
+        f"If an image link is provided via user query, process the image if able or else answer based on the context without checking the image."
         f"Removed any unnecessary or unnatural information or  included in context. "
         f"When the customer asks a general question like: Shop bạn bán những loại hoa nào or Bạn có thể liệt kê giúp tôi một số loại hoa, "
         f"you should: "
@@ -65,11 +84,38 @@ def build_message(context, prompt_input, image_link):
         f"If a question does not make any sense, or is not factually coherent, or no context is provided, explain why instead of answering something not correct. "
         f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question."
     )
-    
+
+    # Initialize the user content list
+    user_content = [{"type": "text", "text": prompt_input}]
+
+    # If an image link is provided, append the image_url object
+    if image_link:
+        try:
+            # Get base64 encoded image
+            base64_image = encode_image_to_base64(image_link)
+
+            # Determine image format
+            image_format = "jpeg"  # default
+            if image_link.lower().endswith('.png'):
+                image_format = "png"
+            elif image_link.lower().endswith('.webp'):
+                image_format = "webp"
+            elif image_link.lower().endswith('.gif'):
+                image_format = "gif"
+
+            user_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/{image_format};base64,{base64_image}"
+                }
+            })
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            # Continue without image
+
     messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": prompt_input}
-
+        {"role": "user", "content": user_content}
     ]
     
     return messages
