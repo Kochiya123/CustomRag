@@ -601,9 +601,6 @@ class Embed_llm:
                 product_vector = self.retrieval_vector_product(cur, conn, query)
 
             if product_vector is not None:
-                if products is not None:
-                    result = reranker.combine_and_rerank_together(query, products, product_vector)
-                else:
                     return product_vector
             elif products is not None:
                 result = reranker.rerank_query(query, products)
