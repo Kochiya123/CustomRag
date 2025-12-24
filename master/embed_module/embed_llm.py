@@ -335,7 +335,7 @@ class Embed_llm:
                 texts = query,
                 task = "retrieval.query",
             )
-            threshold = 0.7
+            threshold = 0.6
             limit = 5
             query = """
                         SELECT * FROM (
@@ -600,12 +600,13 @@ class Embed_llm:
             else:
                 product_vector = self.retrieval_vector_product(cur, conn, query)
 
-            if products is not None and product_vector is not None:
-                result = reranker.combine_and_rerank_together(query, products, product_vector)
-            elif products:
+            if product_vector is not None:
+                if products is not None:
+                    result = reranker.combine_and_rerank_together(query, products, product_vector)
+                else:
+                    return product_vector
+            elif products is not None:
                 result = reranker.rerank_query(query, products)
-            elif product_vector:
-                return product_vector
             else:
                 raise Exception('Cannot retrieve result from product vector table!')
             return result

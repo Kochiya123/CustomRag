@@ -960,6 +960,7 @@ def get_answer():
                 else:
                     context = ""
             messages = build_message(context, query, image_url)
+            print(messages)
         else:
             text_results = embed.retrieve_random_products(cur, conn, limit=5)
             context = text_results

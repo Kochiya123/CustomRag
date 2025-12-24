@@ -97,6 +97,7 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "tới": "between",
         "giữa": "between",
         "tầm": "between",
+        "cỡ": "between",
     }
     info = {
         "flower": None,
