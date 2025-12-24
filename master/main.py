@@ -887,7 +887,8 @@ def get_answer():
             else:
                 context = ""
         messages = build_message(context, query, image_url)
-    elif info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info":
+    elif info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info" or info['intent'] == "flowers":
+        if info['intent'] != "all_flowers":
             # Get text-based retrieval results
             text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
             print(text_results)
@@ -985,6 +986,10 @@ def get_answer():
                     context = build_context(formatted_products)
                 else:
                     context = ""
+            messages = build_message(context, query, image_url)
+        else:
+            text_results = embed.retrieve_random_products(cur, conn, limit=5)
+            context = text_results
             messages = build_message(context, query, image_url)
     else:
         # General information - use embedding-based retrieval

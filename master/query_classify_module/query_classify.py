@@ -14,8 +14,13 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "những loại hoa nào": "all_flowers",
         "có những hoa gì": "all_flowers",
         "hoa gì": "all_flowers",
-        "hoa": "all_flowers",
-        "sản phẩm": "all_flowers",
+        "đề xuất một số hoa": "all_flowers",
+        "đề xuất một số sản phẩm": "all_flowers",
+        "gợi ý một số hoa": "all_flowers",
+        "gợi ý một số sản phẩm": "all_flowers",
+        "hoa": "flowers",
+        "sản phẩm": "flowers",
+
 
         # General category/occasion inquiries
         "dịp nào": "all_categories",
@@ -24,6 +29,7 @@ def extract_info(cur, user_query: str) -> Dict[str, Any]:
         "danh sách dịp": "all_categories",
         "có hoa cho dịp nào": "all_categories",
         "loại hoa nào" : "all_categories",
+
 
         # Delivery inquiries
         "có giao hàng": "delivery_info",
