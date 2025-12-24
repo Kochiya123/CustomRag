@@ -859,35 +859,8 @@ def get_answer():
         return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
 
     info = extract_info(cur,query)
-    
-    # Route all queries through embedding-based retrieval
-    if info['category'] or info['intent'] == "all_categories":
-        # Category-based query - use embedding-based retrieval with category filtering
-        context = embed.embedded_retrieve_category_information(cur, conn, query, info['category'])
-        if not context:
-            return jsonify({'message': f'Chúng tôi không tìm thấy sản phẩm nào cho danh mục "{info["category"]}"!'}), 404
-        # Format reranked results
-        if isinstance(context, list) and context:
-            formatted_products = []
-            for product in context[:5]:  # Limit to top 10
-                if len(product) >= 2:
-                    product_id = product[0]
-                    product_text = product[1]
-                    # Fetch product_name and price from database using product_id
-                    cur.execute(
-                        "SELECT product_name, price FROM product_vector WHERE product_id = %s",
-                        (product_id,)
-                    )
-                    result = cur.fetchone()
-                    if result:
-                        product_name, price = result
-                        formatted_products.append((product_id, product_name, product_text, price))
-            if formatted_products:
-                context = build_context(formatted_products)
-            else:
-                context = ""
-        messages = build_message(context, query, image_url)
-    elif info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info" or info['intent'] == "flowers":
+
+    if info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info" or info['intent'] == "flowers":
         if info['intent'] != "all_flowers":
             # Get text-based retrieval results
             text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
