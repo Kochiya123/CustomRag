@@ -600,10 +600,12 @@ class Embed_llm:
             else:
                 product_vector = self.retrieval_vector_product(cur, conn, query)
 
-            if product_vector is not None:
-                    return product_vector
-            elif products is not None:
-                result = reranker.rerank_query(query, products)
+            if product_vector and products:
+                result = reranker.combine_and_rerank_together(query, products, product_vector)
+            elif product_vector:
+                return product_vector
+            elif products:
+                return reranker.rerank_query(query, products)
             else:
                 raise Exception('Cannot retrieve result from product vector table!')
             return result
