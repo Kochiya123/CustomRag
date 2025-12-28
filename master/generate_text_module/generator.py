@@ -68,7 +68,6 @@ def build_message(context, prompt_input, image_link):
         f"You are providing recommendation for the customer about different type of flower bouquets based on their given input. "
         f"Prioritize asking the customer for personal liking first, then give suggestion based on that. "
         f"Your answer must be based on the flower products provided as follow: {context} "
-        f"Removed any unnecessary or unnatural information or  included in context. "
         f"When the customer asks a general question like: Shop bạn bán những loại hoa nào or Bạn có thể liệt kê giúp tôi một số loại hoa, "
         f"you should: "
         f"- Provide a short list of representative flower products from the given context. "
@@ -78,6 +77,7 @@ def build_message(context, prompt_input, image_link):
         f"- Don't make up any of the information. "
         f"- Keep the tone friendly, professional, and helpful. "
         f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
+        f"If the image contain a bouquet of flowers with many flowers, try analyzing the type of flowers in the bouquet and give suggestions based on that"
         f"Don't leave any uncommon tag or mark in the answer"
         f"Please ensure that your responses are socially unbiased and positive in nature. "
         f"If a question does not make any sense, or is not factually coherent, or no context is provided, explain why instead of answering something not correct. "
@@ -150,7 +150,7 @@ class Generator_llm():
         self.client = OpenAI(api_key=api_key)
         # Use GPT-4o (latest GPT-4 model)
         # Can be overridden via OPENAI_MODEL environment variable
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4.1")
         print(f"OpenAI GPT-4o client initialized successfully with model: {self.model}")
 
     @observe
