@@ -154,7 +154,7 @@ def build_message_intent(prompt_input):
         f"Analyze the user input thoroughly and guess the intend behind that."
         f"Your answer must be one of the following: "
         f"If the user input describe general information of the product or flower they want to buy or search. For example: tôi muốn mua một bó hoa màu xanh nhạt. Classify it as 'product_general'"
-        f"If the user input describe specific shop products or shop flowers information, For example price, product stock, occasion or specific product name. Classify it as 'specific_information'"
+        f"If the user input describe specific shop products or shop flowers information, For example: price, product stock, specific occasion like birthdate or valentine and specific product name. Classify it as 'specific_information'"
         f"If the user input about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
