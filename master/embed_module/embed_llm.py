@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 import psycopg2
 import requests
@@ -6,6 +8,7 @@ import os
 import ast
 
 from master.rerank_module.rerank_llm import Rerank
+from master.util.util import text_split
 
 threshold_score = 0.8
 
@@ -254,15 +257,17 @@ class Embed_llm:
             return 0
         return list_id
 
-    def embedded_add_single_column_product(self, cur, conn, product_string, product_name, product_id, category_id, price):
+    def embedded_add_single_column_product(self, cur, conn, product_string, product_id, category_id):
         try:
 
+            product_description = text_split(product_string)
+
             text_embedding = self.encode_text(
-                texts=product_string,
+                texts=product_description,
                 task="retrieval.passage",
             )
 
-            cur.execute('Insert into product_vector (product_id, category_id, price, product_text, product_name, embedding_text) values (%s, %s, %s, %s, %s, %s)', (product_id, category_id, price, product_string, product_name, text_embedding))
+            cur.execute('Insert into product_vector (product_id, category_id, embedding_text) values (%s, %s, %s)', (product_id, category_id, text_embedding))
             conn.commit()
         except(Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
@@ -274,13 +279,13 @@ class Embed_llm:
             return 0
         return product_id
 
-    def embedded_update_single_column_product(self, cur, conn, product_id, product_string, product_name, category_id, price):
+    def embedded_update_single_column_product(self, cur, conn, product_id, product_string, category_id):
         try:
             text_embedding = []
-
+            product_description = text_split(product_string)
             if product_string:
                 text_embedding = self.encode_text(
-                    texts=product_string,
+                    texts=product_description,
                     task="retrieval.passage",
                 )
 
@@ -290,12 +295,6 @@ class Embed_llm:
             if category_id:
                 fields.append("category_id = %s")
                 values.append(category_id)
-            if product_name:
-                fields.append("product_name = %s")
-                values.append(product_name)
-            if price:
-                fields.append("price = %s")
-                values.append(price)
             if text_embedding:
                 fields.append("embedding_text = %s")
                 values.append(text_embedding)
@@ -329,20 +328,18 @@ class Embed_llm:
                 print(f"Rollback error: {rollback_error}")
             return 0
 
-    def retrieval_vector_product(self, cur, conn, query):
+    def retrieval_vector_product(self, cur, conn, query, limit):
         try:
             query_embedding = self.encode_text(
                 texts = query,
                 task = "retrieval.query",
             )
             threshold = 0.6
-            limit = 5
             query = """
                         SELECT * FROM (
                             SELECT 
                                 id, 
                                 product_id, 
-                                product_text,
                                 1 - (embedding_text <=> %s::vector) as similarity
                             FROM product_vector
                             WHERE embedding_text IS NOT NULL
@@ -357,10 +354,9 @@ class Embed_llm:
             # Query database to get product_text for each product_id
             result = []
             for row in rows:
-                id, product_id, text, similarity = row
+                id, product_id, similarity = row
                 combined_result = [
                     product_id,
-                    text,
                     float(similarity),
                 ]
                 result.append(combined_result)
@@ -887,3 +883,153 @@ class Embed_llm:
             print(f"Error computing image-text similarity: {e}")
             return []
 
+
+
+def save_chat_history(cur, conn, user_id, user_session_id, user_chat, response):
+    """Save chat history to database"""
+    try:
+        user_session_id_str = str(user_session_id) if user_session_id is not None else None
+
+        cur.execute("select user_id, user_session_id from chat_history where user_id = %s", (user_id,))
+        result = cur.fetchall()
+        if not result:
+            new_session_id = int(datetime.now().strftime("%Y%m%d%H%M%S"))
+            cur.execute("""
+                        INSERT INTO chat_history (user_id, user_session_id ,user_chat, response)
+                        VALUES (%s, %s, %s, %s)
+                    """, (user_id, new_session_id, user_chat, response))
+        else:
+            user_id = result[0][0]
+            user_session_id = result[0][1]
+            cur.execute("""
+                INSERT INTO chat_history (user_id, user_session_id ,user_chat, response)
+                VALUES (%s, %s, %s, %s)
+            """, (user_id, user_session_id, user_chat, response))
+
+        conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error saving chat history: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+
+
+def load_chat_history(cur, conn, user_id):
+    """Load chat history from database based on user_id"""
+    try:
+        user_id_str = str(user_id) if user_id is not None else None
+        cur.execute("""
+            SELECT user_session_id, user_chat, response
+            FROM chat_history
+            WHERE user_id = %s 
+            AND user_session_id = (
+                SELECT MAX(user_session_id) 
+                FROM chat_history 
+                WHERE user_id = %s
+            )
+            ORDER BY created_at ASC
+        """, (user_id_str, user_id_str))
+        results = cur.fetchall()
+
+        # Format results as list of dictionaries
+        chat_history = []
+        for row in results:
+            chat_history.append({
+                'user_session_id': row[0],
+                'user_chat': row[1],
+                'response': row[2],
+                'created_at': row[3].isoformat() if row[3] else None
+            })
+
+        return chat_history
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error loading chat history: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+        return []
+
+
+def get_chat_history_user_session(cur, conn, user_id, user_session_id):
+    """Save chat history to database"""
+    try:
+        user_id_str = str(user_id) if user_id is not None else None
+        cur.execute("""
+                    SELECT user_chat, response
+                    FROM chat_history
+                    WHERE user_id = %s and user_session_id = %s
+                    ORDER BY created_at ASC
+                """, (user_id_str, user_session_id))
+        results = cur.fetchall()
+
+        chat_history = []
+        for row in results:
+            chat_history.append({
+                'user_chat': row[0].isoformat() if row[1] else None,
+                'response': row[1]
+            })
+        return chat_history
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error loading chat history: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+
+
+def get_latest_history_user_session(cur, conn, user_id):
+    """Save chat history to database"""
+    try:
+        user_id_str = str(user_id) if user_id is not None else None
+        cur.execute("""
+            SELECT user_chat, response
+            FROM chat_history
+            WHERE user_id = %s 
+            AND user_session_id = (
+                SELECT MAX(user_session_id) 
+                FROM chat_history 
+                WHERE user_id = %s
+            )
+            ORDER BY created_at ASC
+        """, (user_id_str, user_id_str))
+        results = cur.fetchall()
+
+        chat_history = []
+        for row in results:
+            chat_history.append({
+                'user_chat': row[0],
+                'response': row[1]
+            })
+        return chat_history
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error loading chat history: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+
+def reset_session_method(cur, conn, user_id, session_id):
+    try:
+        user_id_str = str(user_id) if user_id is not None else None
+
+        # UPDATE query - no FROM clause needed, no fetchall() for UPDATE
+        cur.execute("""
+                    UPDATE chat_history
+                    SET user_session_id = %s
+                    WHERE user_id = %s
+                """, (session_id, user_id_str))
+
+        # Commit the changes
+        conn.commit()
+
+        # Return number of rows affected
+        return cur.rowcount
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(f"Error resetting session: {error}")
+        try:
+            conn.rollback()
+        except Exception as rollback_error:
+            print(f"Rollback error: {rollback_error}")
+        return 0

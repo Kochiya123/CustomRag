@@ -1,4 +1,7 @@
+import json
 import os
+from typing import Dict, Any
+
 from dotenv import load_dotenv
 from langfuse import Langfuse, observe, get_client, propagate_attributes
 from openai import OpenAI
@@ -58,7 +61,7 @@ def encode_image_to_base64(image_source):
 
     return base64.b64encode(image_data).decode('utf-8')
 
-def build_message(context, prompt_input, image_link):
+def build_message(context, prompt_input, image_link, chat_history):
     """
     Build OpenAI chat format messages from context and prompt.
     Returns a list of message dictionaries for OpenAI API.
@@ -73,15 +76,14 @@ def build_message(context, prompt_input, image_link):
         f"- Provide a short list of representative flower products from the given context. "
         f"- Vary the list so answers don't feel repetitive. "
         f"- Encourage the customer to share their preferences (occasion, price range, style) so you can refine suggestions. "
-        f"- Always base your answer only on the provided product: {context}. "
         f"- Don't make up any of the information. "
-        f"- Keep the tone friendly, professional, and helpful. "
+        f"- If no context is provided, give honest answer that the shop currently don't have any product that match the user description"
         f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
         f"If the image contain a bouquet of flowers with many flowers, try analyzing the type of flowers in the bouquet and give suggestions based on that"
-        f"Don't leave any uncommon tag or mark in the answer"
         f"Please ensure that your responses are socially unbiased and positive in nature. "
-        f"If a question does not make any sense, or is not factually coherent, or no context is provided, explain why instead of answering something not correct. "
+        f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
         f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question."
+        f"Old chat history for reference: {chat_history}"
     )
 
     # Initialize the user content list
@@ -119,28 +121,56 @@ def build_message(context, prompt_input, image_link):
     
     return messages
 
-def build_message_general(prompt_input):
+def build_message_schema(schema_context, relational_context, prompt_input, top_k):
     """
-    Build OpenAI chat format messages for general questions.
+    Build OpenAI chat format messages from context and prompt.
     Returns a list of message dictionaries for OpenAI API.
     """
     system_content = (
-        f"You are a helpful, respectful, and honest assistant. "
-        f"You provide clear, concise, and informative responses to the customer based on their input. "
-        f"Keep the tone friendly, professional, and helpful. "
-        f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
-        f"Please ensure that your responses are socially unbiased and positive in nature. "
-        f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
-        f"If you don't know the answer to a question, respond that as a language model you are not able to provide detailed information on that topic."
+        f"You are a SQL assistant. Generate SQL queries based on the given schema, relationships user input."
+        f"Follow the response format"
+        f"product_type attribute must be set to 0 and is_custom must also be set to 0 if the product table is query"
+        f"Don't select images, created_at, updated_at, product_string, sync_status when create the query script"
+        f"If the user query ask about a specific occasion, for example birthday or christmas, be sure to join it with the sub table product_categories and the categories table and compare the product category"
+        f"Schema: {schema_context}"
+        f"Relational context: {relational_context}"
+        f"Use the following top_k recommendations: {top_k}"
     )
-    
+
+    # Initialize the user content list
+    user_content = [{"type": "text", "text": prompt_input}]
+
     messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": prompt_input}
+        {"role": "user", "content": user_content}
     ]
-    
+
     return messages
 
+def build_message_intent(prompt_input):
+    system_content = (
+        f"You are a master at Vietnamese language trying to figure out what is the meaning of the user input."
+        f"The user is a flower shop customer"
+        f"Analyze the user input thoroughly and guess the intend behind that."
+        f"Your answer must be one of the following: "
+        f"If the user input describe general information of the product or flower they want to buy or search. For example: tôi muốn mua một bó hoa màu xanh nhạt. Classify it as 'product_general'"
+        f"If the user input describe specific shop products or shop flowers information, For example price, product stock or event product. Classify it as 'specific_information'"
+        f"If the user input about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
+        f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
+        f"Also try to find any clue of the user indicate the number of product he/she want to view"
+        f"If no clue is found, default the top k value to 50"
+        f"Follow the response format"
+    )
+
+    # Initialize the user content list
+    user_content = [{"type": "text", "text": prompt_input}]
+
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content}
+    ]
+
+    return messages
 
 class Generator_llm():
     def __init__(self):
@@ -152,6 +182,57 @@ class Generator_llm():
         # Can be overridden via OPENAI_MODEL environment variable
         self.model = os.getenv("OPENAI_MODEL", "gpt-4.1")
         print(f"OpenAI GPT-4o client initialized successfully with model: {self.model}")
+
+    def _define_response_schema(self) -> Dict[str, Any]:
+        """Define the response schema"""
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "sql_generation_response",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "can_generate_sql": {
+                            "type": "boolean",
+                            "description": "Whether SQL query can be generated"
+                        },
+                        "sql_query": {
+                            "type": ["string", "null"],
+                            "description": "Generated SQL query if can_generate_sql is true"
+                        },
+                    },
+                    "required": ["can_generate_sql", "sql_query"],
+                    "additionalProperties": False
+                }
+            }
+        }
+
+    def _define_intent_schema(self) -> Dict[str, Any]:
+        """Define the response schema"""
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "sql_generation_response",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "intent": {
+                            "type": ["string", "null"],
+                            "description": "User intent with the following input"
+                        },
+                        "top_k": {
+                            "type": ["integer", "null"],
+                            "description": "The number of most likely product user want to view"
+                        }
+                    },
+                    "required": ["intent", "top_k"],
+                    "additionalProperties": False
+                }
+            }
+        }
+
 
     @observe
     def generate_answer(self, messages, user_session_id, user_id):
@@ -200,3 +281,63 @@ class Generator_llm():
                 langfuse_client = get_client()
                 langfuse_client.flush()
                 raise  # Re-raise the exception
+
+
+    def generate_sql_query(self, messages):
+        print(f"Generating answer with OpenAI {self.model}")
+
+        try:
+            # OpenAI API call with same generation settings as before
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1,  # Same as before
+                top_p=0.95,  # Same as before (OpenAI uses top_p, not top_k)
+                max_tokens=1024,  # Same as max_new_tokens before
+                frequency_penalty=0.2,  # Similar effect to repetition_penalty=1.2
+                response_format=self._define_response_schema()
+            )
+
+            output = response.choices[0].message.content
+            result = json.loads(output)
+            print(f"Generated answer: {output}...")  # Print first 100 chars
+
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Error generating answer with OpenAI: {error_msg}")
+            raise  # Re-raise the exception
+
+    def generate_intent_query(self, messages):
+        try:
+            # OpenAI API call with same generation settings as before
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1,  # Same as before
+                top_p=0.95,  # Same as before (OpenAI uses top_p, not top_k)
+                max_tokens=1024,  # Same as max_new_tokens before
+                frequency_penalty=0.2,  # Similar effect to repetition_penalty=1.2
+                response_format=self._define_intent_schema()
+            )
+
+            output = response.choices[0].message.content
+            result = json.loads(output)
+            print(f"Generated answer: {output}...")  # Print first 100 chars
+            # If output is empty or too short, return a default message
+
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Error generating answer with OpenAI: {error_msg}")
+            raise  # Re-raise the exception
+
+
+
+
+
+
+
+

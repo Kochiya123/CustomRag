@@ -1,20 +1,22 @@
+from datetime import datetime
+
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_restful import Api
 from flasgger import Swagger
 import os
-import psycopg2
 import tiktoken
 
 from langfuse import Langfuse
 
 from master.db_module.connect import connect
-from master.generate_text_module.generator import Generator_llm, build_context, build_message
-from master.embed_module.embed_llm import Embed_llm
-
+from master.db_service.postgre_service import MysqlService
+from master.generate_text_module.generator import Generator_llm, build_message, build_message_schema, \
+    build_message_intent
+from master.embed_module.embed_llm import Embed_llm, save_chat_history, load_chat_history, \
+    get_chat_history_user_session, get_latest_history_user_session, reset_session_method
 
 from master.guardrail.guardrail import Guardrail
-from master.query_classify_module.query_classify import extract_info
 
 from master.rerank_module.rerank_llm import Rerank
 
@@ -28,63 +30,13 @@ langfuse = Langfuse(
     # base_url="http://localhost:8000"
 )
 cur, conn = connect()
+mysql = MysqlService()
+
 generator = Generator_llm()
 embed = Embed_llm()
 guard = Guardrail()
 reranker = Rerank()
 
-def save_chat_history(cur, conn, user_id, user_session_id, user_chat, response):
-    """Save chat history to database"""
-    try:
-        user_session_id_str = str(user_session_id) if user_session_id is not None else None
-        
-        # If user_id exists, remove it from insert parameters (don't include user_id column)
-        if user_id:
-            # Insert without user_id column
-            cur.execute("""
-                INSERT INTO chat_history (user_id, user_session_id, user_chat, response)
-                VALUES (%s, %s, %s, %s)
-            """, (user_id, user_session_id_str, user_chat, response))
-        
-        conn.commit()
-        print("Chat history saved successfully")
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(f"Error saving chat history: {error}")
-        try:
-            conn.rollback()
-        except Exception as rollback_error:
-            print(f"Rollback error: {rollback_error}")
-
-def load_chat_history(cur, conn, user_id):
-    """Load chat history from database based on user_id"""
-    try:
-        user_id_str = str(user_id) if user_id is not None else None
-        cur.execute("""
-            SELECT user_session_id, user_chat, response, created_at
-            FROM chat_history
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-        """, (user_id_str,))
-        results = cur.fetchall()
-        
-        # Format results as list of dictionaries
-        chat_history = []
-        for row in results:
-            chat_history.append({
-                'user_session_id': row[0],
-                'user_chat': row[1],
-                'response': row[2],
-                'created_at': row[3].isoformat() if row[3] else None
-            })
-        
-        return chat_history
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(f"Error loading chat history: {error}")
-        try:
-            conn.rollback()
-        except Exception as rollback_error:
-            print(f"Rollback error: {rollback_error}")
-        return []
 
 def count_tokens(text, model="gpt-4o"):
     """Count tokens in text using tiktoken"""
@@ -197,7 +149,7 @@ def embed_single():
     if not product_string or not product_id or not category_id or not product_name or not price:
         return jsonify({'message': 'Missing required fields: product_string, product_id, category_id, product_name, price'}), 400
     
-    result = embed.embedded_add_single_column_product(cur, conn, product_string, product_name, product_id, category_id, price)
+    result = embed.embedded_add_single_column_product(cur, conn, product_string, product_id, category_id)
     if result:
         return jsonify({'message': f'Embed product {result} successfully'}), 200
     return jsonify({'message': 'Embed single product failed'}), 500
@@ -290,7 +242,7 @@ def embed_update_single(product_id):
         return jsonify(
             {'message': 'Missing required fields: product_string, product_id, category_id, product_name, price'}), 400
     
-    result = embed.embedded_update_single_column_product(cur, conn, product_id, product_string, product_name, category_id, price)
+    result = embed.embedded_update_single_column_product(cur, conn, product_id, product_string, category_id)
     if result:
         return jsonify({'message': f'Update embed product {product_id} successfully'}), 200
     return jsonify({'message': f'Update embed product {product_id} failed'}), 500
@@ -763,11 +715,24 @@ def get_answer():
                 4. Rerank the combined results using Jina Rerank v3
                 5. Use the reranked results as context for answer generation
               example: "https://cdn.pixabay.com/photo/2023/03/14/11/19/flower-7852094_1280.jpg"
+            reset_session:
+              type: boolean
+              required: false
+              default: false
+              description: |
+                Optional flag to reset the user's session. When set to true, the system will:
+                1. Clear the existing chat history for the current session_id
+                2. Start a new conversation session
+                3. Generate a new session_id if one was not provided
+                This is useful when the user wants to start a completely new conversation
+                without the context of previous messages.
+              example: true
         example:
           query: "tôi muốn mua hoa màu vàng cho ngày của mẹ"
           user_id: "user_12345"
           session_id: "session_abc123"
           image_url: "https://cdn.pixabay.com/photo/2023/03/14/11/19/flower-7852094_1280.jpg"
+          reset_session: false
 
     responses:
       200:
@@ -829,21 +794,9 @@ def get_answer():
         return jsonify({'message': 'Request body must be JSON'}), 400
     query = data.get('query')
     user_id = data.get("user_id") or None
-    session_id = data.get("session_id") or None
     image_url = data.get("image_url") or None
+    session_id = data.get("session_id") or None
 
-
-    # Get optional tracking parameters
-    #user_id = request.args.get('user_id') or None
-    #session_id = request.args.get('session_id') or None
-    #image_url = request.args.get('image_url') or None
-
-    # Get query and optional image_url from query parameters
-    #query = request.args.get('query')
-    user_chat = query
-
-    context = []
-    
     if not query:
         return jsonify({'message': 'Missing query parameter "query"'}), 400
 
@@ -858,124 +811,41 @@ def get_answer():
     if guard.guard_check__response(query):
         return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
 
-    info = extract_info(cur,query)
+    chat_history = get_latest_history_user_session(cur, conn, user_id)
+    intent_message = build_message_intent(query)
+    result = generator.generate_intent_query(intent_message)
+    intent = result["intent"]
+    top_k = result["top_k"]
+    context = []
+    messages = None
 
-    if info['flower'] or info['intent'] == "all_flowers" or info['intent'] == "price_info" or info['intent'] == "flowers":
-        if info['intent'] != "all_flowers":
-            # Get text-based retrieval results
-            text_results = embed.embedded_retrieve_products_information(cur,conn, query, info['preference'], info['flower'], info['price'])
-            print(text_results)
-            # If image_url is provided, compute image-text similarity and combine
-            if image_url:
-                try:
-                    # Compute image-to-text similarity
-                    image_results = embed.compute_image_text_similarity(cur, conn, image_url)
-                    
-                    # Combine text and image results
-                    # text_results format: (product_id, product_text, score) or (product_id, product_text)
-                    # image_results format: (product_id, product_text, similarity_score)
-                    
-                    # Convert text_results to consistent format with scores
-                    text_results_with_scores = []
-                    for item in text_results if isinstance(text_results, list) else []:
-                        if len(item) >= 2:
-                            product_id = item[0]
-                            product_text = item[1]
-                            # If score exists, use it; otherwise set to 0.5
-                            score = item[2] if len(item) >= 3 else 0.5
-                            text_results_with_scores.append((product_id, product_text, score))
-                    
-                    # Combine both results: merge by product_id and average scores
-                    combined_results = {}
-                    
-                    # Add text results
-                    for product_id, product_text, score in text_results_with_scores:
-                        combined_results[product_id] = {
-                            'id': product_id,
-                            'product_text': product_text,
-                            'text_score': score,
-                            'image_score': 0.0,
-                            'combined_score': score
-                        }
-                    
-                    # Add/update with image results
-                    for product_id, product_text, image_score in image_results:
-                        if product_id in combined_results:
-                            # Average the scores
-                            combined_results[product_id]['image_score'] = image_score
-                            combined_results[product_id]['combined_score'] = (
-                                combined_results[product_id]['text_score'] + image_score
-                            ) / 2.0
-                        else:
-                            combined_results[product_id] = {
-                                'id': product_id,
-                                'product_text': product_text,
-                                'text_score': 0.0,
-                                'image_score': image_score,
-                                'combined_score': image_score
-                            }
+    if intent == "product_general":
+        # vector search
+        result = embed.retrieval_vector_product(cur, conn, query, top_k)
+        result.sort(key=lambda x: x["similarity"], reverse=True)
+        product_list = mysql.get_product_on_id(result)
+        messages = build_message(product_list, query, image_url, chat_history)
 
-                    # Convert to list and sort by combined_score
-                    combined_list = list(combined_results.values())
-                    
-                    # Rerank the combined results
-                    # Prepare data for reranker: list of (product_id, product_text)
-                    rerank_data = [(item['id'], item['product_text']) for item in combined_list]
-                    
-                    if rerank_data:
-                        reranked_results = reranker.rerank_query(query, rerank_data)
-                        # reranked_results format: (product_id, product_text, score)
-                        context = reranked_results
-                    else:
-                        context = text_results
-                except Exception as e:
-                    print(f"Error processing image: {e}")
-                    # Fallback to text-only results
-                    context = text_results
-            else:
-                # No image, use text results only
-                context = text_results
-            
-            # Format reranked results if needed
-            # Context format: (product_id, product_text, score) or (product_id, product_text)
-            if isinstance(context, list) and context:
-                formatted_products = []
-                for product in context[:5]:  # Limit to top 10
-                    # Handle both formats: (product_id, product_text, score) or (product_id, product_text)
-                    if len(product) >= 2:
-                        product_id = product[0]  # product_id is always first element
-                        product_text = product[1]  # product_text is always second element
-                        # Fetch product_name and price from database using product_id
-                        cur.execute(
-                            "SELECT product_name, price FROM product_vector WHERE product_id = %s",
-                            (product_id,)
-                        )
-                        result = cur.fetchone()
-                        if result:
-                            product_name, price = result
-                            # Format: (product_id, product_name, product_text, price)
-                            formatted_products.append((product_id, product_name, product_text, price))
-                if formatted_products:
-                    context = build_context(formatted_products)
-                else:
-                    context = ""
-            messages = build_message(context, query, image_url)
-            print(messages)
-        else:
-            text_results = embed.retrieve_random_products(cur, conn, limit=5)
-            context = text_results
-            messages = build_message(context, query, image_url)
+    elif intent == "specific_information":
+        # sql query transformation
+        table_schema = mysql.get_tables_schema()
+        relation_schema = mysql.get_relational_schema()
+        sql_message = build_message_schema(table_schema, relation_schema, query, top_k)
+        result = generator.generate_sql_query(sql_message)
+        sql_query = result["sql_query"]
+        result = mysql.get_product_on_query(sql_query)
+        messages = build_message(result, query, image_url, chat_history)
+
+    elif intent == "shop_information":
+        # general information search
+        general_information = embed.embedded_retrieve_general_information(cur, conn, query)
+        messages = build_message(general_information, query, image_url, chat_history)
+
+    elif image_url:
+        pass
     else:
-        # General information - use embedding-based retrieval
-        general_info = embed.embedded_retrieve_general_information(cur, conn, query)
-        context = []
-        if general_info:
-            # general_info is a tuple from database, extract the text field
-            # Assuming structure: (general_id, general_text, general_embedding)
-            for row in general_info:
-                context.append(row[1] if len(row) > 1 else str(row))
-        messages = build_message(context, query, image_url)
-
+        # pass straight to the generator
+        messages = build_message(context, query, image_url, chat_history)
 
     # Generate answer using LLM
     answer = generator.generate_answer(messages, session_id, user_id)
@@ -986,7 +856,7 @@ def get_answer():
     # Save chat history to database only if user_id is provided
     if user_id:
         try:
-            save_chat_history(cur, conn, user_id, session_id, user_chat, answer)
+            save_chat_history(cur, conn, user_id, session_id, query, answer)
         except Exception as e:
             print(f"Warning: Failed to save chat history: {str(e)}")
             # Continue even if saving fails - don't break the API response
@@ -1116,6 +986,63 @@ def get_chat_history():
         print(f"Error retrieving chat history: {str(e)}")
         return jsonify({'message': 'Error retrieving chat history'}), 500
 
+
+@app.route('/chat_history', methods=['PUT'])
+def reset_chat_history():
+    """
+    Reset chat history session
+    ---
+    tags:
+      - Chat History
+    summary: Reset chat history session
+    description: Creates a new session ID and resets the current chat session for the user
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              reset_session:
+                type: boolean
+                description: Flag to indicate whether to reset the session
+              user_id:
+                type: string
+                description: ID of the user
+            required:
+              - reset_session
+    responses:
+      200:
+        description: Session reset successfully
+      400:
+        description: Bad request
+      500:
+        description: Internal server error
+    """
+    try:
+        data = request.get_json()
+        reset_session = data.get("reset_session") or None
+        user_id = data.get("user_id")
+
+        if not reset_session:
+            return jsonify({"error": "reset_session parameter is required"}), 400
+
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+
+        # Generate new session ID
+        session_id = int(datetime.now().strftime("%Y%m%d%H%M%S"))
+
+        # Reset session
+        reset_session_method(cur, conn, session_id, user_id)
+
+        return jsonify({
+            "message": "Session reset successfully",
+            "new_session_id": session_id
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
