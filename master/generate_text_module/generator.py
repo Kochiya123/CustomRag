@@ -84,7 +84,7 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"Old chat history for reference: {chat_history}. "
         f"IMPORTANT: When providing product links, format them as clickable Markdown links using this format: "
         f"[Product Name](https://flower-plus.vercel.app/product/product_id) where product_id is the actual product ID. "
-        f"Example: [Rose Bouquet](https://flower-plus.vercel.app/product/123)"
+        f"Format links as HTML: <a href='https://flower-plus.vercel.app/product/product_id'>Product Name</a>"
     )
 
     # Initialize the user content list
@@ -161,7 +161,6 @@ def build_message_intent(prompt_input):
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
         f"If no clue is found, default the top k value to 50"
-        f"Follow the response format"
     )
 
     # Initialize the user content list
