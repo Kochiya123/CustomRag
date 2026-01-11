@@ -5,10 +5,8 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from langfuse import Langfuse, observe, get_client, propagate_attributes
 from openai import OpenAI
-from openai.types.beta.threads import image_url
 import base64
 import requests
-from io import BytesIO
 
 load_dotenv()
 
@@ -149,7 +147,8 @@ def build_message_schema(schema_context, relational_context, prompt_input, top_k
 
 def build_message_intent(prompt_input):
     system_content = (
-        f"You are a master at Vietnamese language trying to figure out what is the meaning of the user input."
+        f"You are a master at language trying to figure out what is the meaning of the user input."
+        f"The user input may vary in language, but since the shop is from Vietnam. Try and translate the sentence to Vietnamese"
         f"The user is a flower shop customer"
         f"Analyze the user input thoroughly and guess the intend behind that."
         f"Your answer must be one of the following: "
@@ -218,6 +217,10 @@ class Generator_llm():
                 "schema": {
                     "type": "object",
                     "properties": {
+                        "translation": {
+                            "type": ["string", "null"],
+                            "description": "Translation of the user input to Vietnamese"
+                        },
                         "intent": {
                             "type": ["string", "null"],
                             "description": "User intent with the following input"
@@ -227,7 +230,7 @@ class Generator_llm():
                             "description": "The number of most likely product user want to view"
                         }
                     },
-                    "required": ["intent", "top_k"],
+                    "required": ["translation", "intent", "top_k"],
                     "additionalProperties": False
                 }
             }

@@ -816,12 +816,13 @@ def get_answer():
     result = generator.generate_intent_query(intent_message)
     intent = result["intent"]
     top_k = result["top_k"]
+    translation = result["translation"]
     context = []
     messages = None
 
     if intent == "product_general":
         # vector search
-        result = embed.retrieval_vector_product(cur, conn, query, top_k)
+        result = embed.retrieval_vector_product(cur, conn, translation, top_k)
         result.sort(key=lambda x: x["similarity"], reverse=True)
         product_list = mysql.get_product_on_id(result)
         messages = build_message(product_list, query, image_url, chat_history)
@@ -830,22 +831,22 @@ def get_answer():
         # sql query transformation
         table_schema = mysql.get_tables_schema()
         relation_schema = mysql.get_relational_schema()
-        sql_message = build_message_schema(table_schema, relation_schema, query, top_k)
+        sql_message = build_message_schema(table_schema, relation_schema, translation, top_k)
         result = generator.generate_sql_query(sql_message)
         sql_query = result["sql_query"]
         result = mysql.get_product_on_query(sql_query)
-        messages = build_message(result, query, image_url, chat_history)
+        messages = build_message(result, translation, image_url, chat_history)
 
     elif intent == "shop_information":
         # general information search
         general_information = embed.embedded_retrieve_general_information(cur, conn, query)
-        messages = build_message(general_information, query, image_url, chat_history)
+        messages = build_message(general_information, translation, image_url, chat_history)
 
     elif image_url:
         pass
     else:
         # pass straight to the generator
-        messages = build_message(context, query, image_url, chat_history)
+        messages = build_message(context, translation, image_url, chat_history)
 
     # Generate answer using LLM
     answer = generator.generate_answer(messages, session_id, user_id)
@@ -856,7 +857,7 @@ def get_answer():
     # Save chat history to database only if user_id is provided
     if user_id:
         try:
-            save_chat_history(cur, conn, user_id, session_id, query, answer)
+            save_chat_history(cur, conn, user_id, session_id, translation, answer)
         except Exception as e:
             print(f"Warning: Failed to save chat history: {str(e)}")
             # Continue even if saving fails - don't break the API response

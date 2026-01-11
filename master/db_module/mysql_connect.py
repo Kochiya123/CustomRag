@@ -1,9 +1,6 @@
 import mysql.connector
 import os
 
-import psycopg2
-
-
 def mysql_connect():
     try:
         print("Connecting to MySQL database...")

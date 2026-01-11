@@ -24,3 +24,5 @@ Pillow>=10.0.0
 # Langfuse for LLM observability and tracing
 langfuse>=2.0.0
 
+# MySQL connector (correct package name)
+mysql-connector-python>=8.0.0
