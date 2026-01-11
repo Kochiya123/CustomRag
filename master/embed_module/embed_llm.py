@@ -984,7 +984,7 @@ def get_latest_history_user_session(cur, conn, user_id):
     try:
         user_id_str = str(user_id) if user_id is not None else None
         cur.execute("""
-            SELECT user_chat, response
+            SELECT user_chat
             FROM chat_history
             WHERE user_id = %s 
             AND user_session_id = (
@@ -1000,7 +1000,6 @@ def get_latest_history_user_session(cur, conn, user_id):
         for row in results:
             chat_history.append({
                 'user_chat': row[0],
-                'response': row[1]
             })
         return chat_history
     except (Exception, psycopg2.DatabaseError) as error:
