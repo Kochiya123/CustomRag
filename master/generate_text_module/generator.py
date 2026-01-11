@@ -82,6 +82,7 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
         f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question."
         f"Old chat history for reference: {chat_history}"
+        f"You may include links to the product with the following format: https://flower-plus.vercel.app/product/'product_id' where replace product_id with the actual product ID."
     )
 
     # Initialize the user content list
@@ -148,12 +149,12 @@ def build_message_schema(schema_context, relational_context, prompt_input, top_k
 def build_message_intent(prompt_input):
     system_content = (
         f"You are a master at language trying to figure out what is the meaning of the user input."
-        f"The user input may vary in language, but since the shop is from Vietnam. Try and translate the sentence to Vietnamese"
+        f"Translate the sentence into English for better analyzation, or keep the sentence in Vietnamese if you can't capture the meaning"
         f"The user is a flower shop customer"
         f"Analyze the user input thoroughly and guess the intend behind that."
         f"Your answer must be one of the following: "
         f"If the user input describe general information of the product or flower they want to buy or search. For example: tôi muốn mua một bó hoa màu xanh nhạt. Classify it as 'product_general'"
-        f"If the user input describe specific shop products or shop flowers information, For example price, product stock or event product. Classify it as 'specific_information'"
+        f"If the user input describe specific shop products or shop flowers information, For example price, product stock, occasion or specific product name. Classify it as 'specific_information'"
         f"If the user input about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
@@ -217,10 +218,6 @@ class Generator_llm():
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "translation": {
-                            "type": ["string", "null"],
-                            "description": "Translation of the user input to Vietnamese"
-                        },
                         "intent": {
                             "type": ["string", "null"],
                             "description": "User intent with the following input"
@@ -230,7 +227,7 @@ class Generator_llm():
                             "description": "The number of most likely product user want to view"
                         }
                     },
-                    "required": ["translation", "intent", "top_k"],
+                    "required": ["intent", "top_k"],
                     "additionalProperties": False
                 }
             }
