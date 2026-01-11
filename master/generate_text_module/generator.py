@@ -82,9 +82,8 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
         f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question. "
         f"Old chat history for reference: {chat_history}. "
-        f"IMPORTANT: When providing product links, format them as clickable Markdown links using this format: "
-        f"[Product Name](https://flower-plus.vercel.app/product/product_id) where product_id is the actual product ID. "
-        f"Format links as HTML: <a href='https://flower-plus.vercel.app/product/product_id'>Product Name</a>"
+        f"IMPORTANT: When providing product links, search the web with this format: https://flower-plus.vercel.app/product/product_id where replace the product_id with actual product ID. "
+        f"For each of the product in the answer, get the url for the product and attach it to the response"
     )
 
     # Initialize the user content list
