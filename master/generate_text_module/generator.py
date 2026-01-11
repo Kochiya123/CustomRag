@@ -75,14 +75,16 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"- Vary the list so answers don't feel repetitive. "
         f"- Encourage the customer to share their preferences (occasion, price range, style) so you can refine suggestions. "
         f"- Don't make up any of the information. "
-        f"- If no context is provided, give honest answer that the shop currently don't have any product that match the user description"
+        f"- If no context is provided, give honest answer that the shop currently don't have any product that match the user description. "
         f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
-        f"If the image contain a bouquet of flowers with many flowers, try analyzing the type of flowers in the bouquet and give suggestions based on that"
+        f"If the image contain a bouquet of flowers with many flowers, try analyzing the type of flowers in the bouquet and give suggestions based on that. "
         f"Please ensure that your responses are socially unbiased and positive in nature. "
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
-        f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question."
-        f"Old chat history for reference: {chat_history}"
-        f"Create a website link to the product with the following format https://flower-plus.vercel.app/product/product_id where replace the product_id with the actual product ID"
+        f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question. "
+        f"Old chat history for reference: {chat_history}. "
+        f"IMPORTANT: When providing product links, format them as clickable Markdown links using this format: "
+        f"[Product Name](https://flower-plus.vercel.app/product/product_id) where product_id is the actual product ID. "
+        f"Example: [Rose Bouquet](https://flower-plus.vercel.app/product/123)"
     )
 
     # Initialize the user content list
