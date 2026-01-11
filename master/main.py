@@ -990,34 +990,35 @@ def get_chat_history():
 @app.route('/chat_history', methods=['PUT'])
 def reset_chat_history():
     """
-    Reset chat history session
-    ---
-    tags:
-      - Chat History
-    summary: Reset chat history session
-    description: Creates a new session ID and resets the current chat session for the user
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              reset_session:
-                type: boolean
-                description: Flag to indicate whether to reset the session
-              user_id:
-                type: string
-                description: ID of the user
-            required:
-              - reset_session
-    responses:
-      200:
-        description: Session reset successfully
-      400:
-        description: Bad request
-      500:
-        description: Internal server error
+        Reset chat history session
+        ---
+        tags:
+          - Chat History
+        summary: Reset chat history session
+        description: Creates a new session ID and resets the current chat session for the user
+        parameters:
+          - in: query
+            name: reset_session
+            required: true
+            schema:
+              type: boolean
+              enum:
+                - true
+                - false
+            description: Flag to indicate whether to reset the session
+          - in: query
+            name: user_id
+            required: true
+            schema:
+              type: string
+            description: ID of the user
+        responses:
+          200:
+            description: Session reset successfully
+          400:
+            description: Bad request
+          500:
+            description: Internal server error
     """
     try:
         data = request.get_json()

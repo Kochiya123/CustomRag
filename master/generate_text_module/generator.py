@@ -68,21 +68,20 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"You are a helpful shop flower assistant, respectful and honest. "
         f"You are providing recommendation for the customer about different type of flower bouquets based on their given input. "
         f"Prioritize asking the customer for personal liking first, then give suggestion based on that. "
-        f"Your answer must be based on the flower products provided as follow: {context} "
+        f"Always give recommendation based on the flower products given as follow: {context} "
+        f"If no flower products are given, give honest answer that no products match the user description"
         f"When the customer asks a general question like: Shop bạn bán những loại hoa nào or Bạn có thể liệt kê giúp tôi một số loại hoa, "
         f"you should: "
         f"- Provide a short list of representative flower products from the given context. "
         f"- Vary the list so answers don't feel repetitive. "
         f"- Encourage the customer to share their preferences (occasion, price range, style) so you can refine suggestions. "
         f"- Don't make up any of the information. "
-        f"- If no context is provided, give honest answer that the shop currently don't have any product that match the user description. "
         f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
         f"If the image contain a bouquet of flowers with many flowers, try analyzing the type of flowers in the bouquet and give suggestions based on that. "
         f"Please ensure that your responses are socially unbiased and positive in nature. "
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
-        f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question. "
         f"Old chat history for reference: {chat_history}. "
-        f"IMPORTANT: When providing product links, search the web with this format: https://flower-plus.vercel.app/product/product_id where replace the product_id with actual product ID. "
+        f"IMPORTANT: When providing product links, search the web with this format: https://flowerplus.site//product/product_id where replace the product_id with actual product ID. "
         f"For each of the product in the answer, get the url for the product and attach it to the response"
     )
 
@@ -155,7 +154,7 @@ def build_message_intent(prompt_input):
         f"Analyze the user input thoroughly and guess the intend behind that."
         f"Your answer must be one of the following: "
         f"If the user input describe general information of the product or flower they want to buy or search. For example: tôi muốn mua một bó hoa màu xanh nhạt. Classify it as 'product_general'"
-        f"If the user input describe specific shop products or shop flowers information, For example: price, product stock, specific occasion like birthdate or valentine and specific product name. Classify it as 'specific_information'"
+        f"If the user input describe specific shop products or shop flowers information, For example: price, product stock, specific occasion like birthdate or valentine, specific product name and product vouchers. Classify it as 'specific_information'"
         f"If the user input about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
@@ -225,9 +224,62 @@ class Generator_llm():
                         "top_k": {
                             "type": ["integer", "null"],
                             "description": "The number of most likely product user want to view"
-                        }
+                        },
                     },
                     "required": ["intent", "top_k"],
+                    "additionalProperties": False
+                }
+            }
+        }
+
+    def _define_payment_schema(self) -> Dict[str, Any]:
+        """Define the response schema"""
+        return {
+            "type": "function",
+            "function": {
+                "name": "payment_url_generation",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "voucherCode": {
+                            "type": "string",
+                            "description": "voucher apply for the cart"
+                        },
+                        "userId": {
+                            "type": "integer",
+                            "description": "User id of the cart"
+                        },
+                        "productId": {
+                            "type": "integer",
+                            "description": "Product id of the cart"
+                        },
+                        "shippingAddress": {
+                            "type": "string",
+                            "description": "Shipping address of the cart"
+                        },
+                        "phoneNumber": {
+                            "type": "string",
+                            "description": "Phone number of the cart"
+                        },
+                        "recipientName": {
+                            "type": "string",
+                            "description": "Recipient name of the cart"
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Note of the cart"
+                        },
+                        "quantity": {
+                            "type": "integer",
+                            "description": "Quantity of the product"
+                        },
+                        "orderId": {
+                            "type": "integer",
+                            "description": "Order id of the cart"
+                        }
+                    },
+                    "required": ["userId", "productId", "shippingAddress", "phoneNumber", "quantity", "orderId"],
                     "additionalProperties": False
                 }
             }
