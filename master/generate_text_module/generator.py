@@ -82,7 +82,8 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
         f"If you don't know the answer to a question, please response as language model you are not able to respone detailed to these kind of question."
         f"Old chat history for reference: {chat_history}"
-        f"You may include links to the product with the following format: https://flower-plus.vercel.app/product/'product_id' where replace product_id with the actual product ID."
+        f"Create a link to the product with the following format https://flower-plus.vercel.app/product/product_id where replace the product_id with the actual product ID"
+        f"If include, link must be clickable"
     )
 
     # Initialize the user content list

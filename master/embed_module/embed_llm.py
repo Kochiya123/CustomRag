@@ -920,7 +920,7 @@ def load_chat_history(cur, conn, user_id):
     try:
         user_id_str = str(user_id) if user_id is not None else None
         cur.execute("""
-            SELECT user_session_id, user_chat, response
+            SELECT user_session_id, user_chat, response, created_at
             FROM chat_history
             WHERE user_id = %s 
             AND user_session_id = (
