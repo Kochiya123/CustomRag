@@ -822,7 +822,7 @@ def get_answer():
     if intent == "product_general":
         # vector search
         result = embed.retrieval_vector_product(cur, conn, query, top_k)
-        result.sort(key=lambda x: x["similarity"], reverse=True)
+        result.sort(key=lambda x: x[1], reverse=True)
         product_list = mysql.get_product_on_id(result)
         messages = build_message(product_list, query, image_url, chat_history)
 

@@ -81,7 +81,7 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"Please ensure that your responses are socially unbiased and positive in nature. "
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
         f"Old chat history for reference: {chat_history}. "
-        f"IMPORTANT: When providing product links, search the web with this format: https://flowerplus.site//product/product_id where replace the product_id with actual product ID. "
+        f"OPTIONAL: If exist products in recommendation list, search the web with this format: https://flowerplus.site//product/product_id where replace the product_id with actual product ID. "
         f"For each of the product in the answer, get the url for the product and attach it to the response"
     )
 
@@ -131,6 +131,7 @@ def build_message_schema(schema_context, relational_context, prompt_input, top_k
         f"product_type attribute must be set to 0 and is_custom must also be set to 0 if the product table is query"
         f"Don't select images, created_at, updated_at, product_string, sync_status when create the query script"
         f"If the user query ask about a specific occasion, for example birthday or christmas, be sure to join it with the sub table product_categories and the categories table and compare the product category"
+        f"Most of the products in db contain extra'Bó hoa' or 'Sản phẩm' in it name. So query for name must use 'like' rather than '='"
         f"Schema: {schema_context}"
         f"Relational context: {relational_context}"
         f"Use the following top_k recommendations: {top_k}"

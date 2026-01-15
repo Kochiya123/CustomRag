@@ -984,7 +984,7 @@ def get_latest_history_user_session(cur, conn, user_id):
     try:
         user_id_str = str(user_id) if user_id is not None else None
         cur.execute("""
-            SELECT user_chat
+            SELECT user_chat, response
             FROM chat_history
             WHERE user_id = %s 
             AND user_session_id = (
@@ -993,6 +993,7 @@ def get_latest_history_user_session(cur, conn, user_id):
                 WHERE user_id = %s
             )
             ORDER BY created_at ASC
+            LIMIT 2
         """, (user_id_str, user_id_str))
         results = cur.fetchall()
 
