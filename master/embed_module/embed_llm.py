@@ -1001,6 +1001,7 @@ def get_latest_history_user_session(cur, conn, user_id):
         for row in results:
             chat_history.append({
                 'user_chat': row[0],
+                'response': row[1]
             })
         return chat_history
     except (Exception, psycopg2.DatabaseError) as error:

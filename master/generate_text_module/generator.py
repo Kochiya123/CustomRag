@@ -71,15 +71,15 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"Always give recommendation based on the flower products given as follow: {context} "
         f"If no flower products are given, give honest answer that no products match the user description"
         f"When the customer asks a general question like: Shop bạn bán những loại hoa nào or Bạn có thể liệt kê giúp tôi một số loại hoa, "
-        f"you should: "
+        f"you could: "
         f"- Provide a short list of representative flower products from the given context. "
         f"- Vary the list so answers don't feel repetitive. "
         f"- Encourage the customer to share their preferences (occasion, price range, style) so you can refine suggestions. "
         f"- Don't make up any of the information. "
         f"Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. "
-        f"If the image contain a bouquet of flowers with many flowers, try analyzing the type of flowers in the bouquet and give suggestions based on that. "
-        f"Please ensure that your responses are socially unbiased and positive in nature. "
+        f"Only name and price is necessary information, others should be cut out to shorten the answer"
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
+        f"List out the price for each of the product"
         f"Old chat history for reference: {chat_history}. "
         f"OPTIONAL: If exist products in recommendation list, search the web with this format: https://flowerplus.site//product/product_id where replace the product_id with actual product ID. "
         f"For each of the product in the answer, get the url for the product and attach it to the response"
@@ -117,7 +117,8 @@ def build_message(context, prompt_input, image_link, chat_history):
         {"role": "system", "content": system_content},
         {"role": "user", "content": user_content}
     ]
-    
+
+    print(messages)
     return messages
 
 def build_message_schema(schema_context, relational_context, prompt_input, top_k):
@@ -158,6 +159,7 @@ def build_message_intent(prompt_input):
         f"If the user input describe specific shop products or shop flowers information, For example: price, product stock, specific occasion like birthdate or valentine, specific product name and product vouchers. Classify it as 'specific_information'"
         f"If the user input about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
+        f"If the user ask about any past information, For example: còn sản phẩm nào tương tự vậy không. Classify it as 'product_general'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
         f"If no clue is found, default the top k value to 50"
     )

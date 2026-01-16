@@ -27,6 +27,6 @@ class MysqlService(object):
     def get_product_on_id(self, result_list):
         product_result_list = []
         for result in result_list:
-            self.cursor.execute("Select name, price, stock, description, is_active from flowerplus.products where id = %s and product_type = 0 and is_custom = 0", (result[0], ))
+            self.cursor.execute("Select id, name, price, stock, description, is_active from flowerplus.products where id = %s and product_type = 0 and is_custom = 0", (result[0], ))
             product_result_list.append(self.cursor.fetchone())
         return product_result_list
