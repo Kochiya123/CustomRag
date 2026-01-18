@@ -8,7 +8,7 @@ def mysql_connect():
             user=os.getenv('MYSQL_USERNAME'),
             password=os.getenv('MYSQL_PASSWORD'),
             host=os.getenv('MYSQL_HOST'),
-            database=os.getenv('MYSQL_DATABASE')
+            database=os.getenv('MYSQL_USERNAME')
         )
     except (Exception, mysql.connector.Error) as error:
         print(error)

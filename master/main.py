@@ -17,6 +17,7 @@ from master.embed_module.embed_llm import Embed_llm, save_chat_history, load_cha
     get_chat_history_user_session, get_latest_history_user_session, reset_session_method
 
 from master.guardrail.guardrail import Guardrail
+from master.recommendation_service.rec_service import HybridRecommender
 
 from master.rerank_module.rerank_llm import Rerank
 
@@ -37,6 +38,11 @@ embed = Embed_llm()
 guard = Guardrail()
 reranker = Rerank()
 
+def get_recommender():
+    """Initialize recommender with database connection"""
+    if mysql is None:
+        raise Exception("Failed to connect to database")
+    return HybridRecommender(mysql.return_connection())
 
 def count_tokens(text, model="gpt-4o"):
     """Count tokens in text using tiktoken"""
@@ -47,6 +53,19 @@ def count_tokens(text, model="gpt-4o"):
         print(f"Error counting tokens: {e}")
         # Fallback: rough estimation (1 token ≈ 4 characters for English, but Vietnamese might be different)
         return len(text) // 3
+
+def _generate_reason(recommendation: dict) -> str:
+    """Generate a human-readable reason for the recommendation"""
+    score = recommendation.get('score', 0)
+
+    if score > 0.8:
+        return "Highly recommended based on your interests"
+    elif score > 0.6:
+        return "Popular among users with similar taste"
+    elif score > 0.4:
+        return "You might also like this"
+    else:
+        return "Trending in your favorite categories"
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False  # Allow non-ASCII characters in JSON responses (for Vietnamese)
@@ -1044,6 +1063,361 @@ def reset_chat_history():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/recommendations/batch', methods=['POST'])
+def get_batch_recommendations():
+    """
+    Get recommendations for multiple users at once
+    ---
+    tags:
+      - Recommendations
+    summary: Get batch recommendations for multiple users
+    description: |
+      Retrieves personalized product recommendations for multiple users in a single request.
+      Useful for generating recommendations for user lists or dashboards.
+      Maximum 100 users per request.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - user_ids
+            properties:
+              user_ids:
+                type: array
+                items:
+                  type: integer
+                description: List of user IDs to get recommendations for
+                minItems: 1
+                maxItems: 100
+                example: [123, 456, 789]
+              limit:
+                type: integer
+                description: Number of recommendations per user
+                default: 5
+                minimum: 1
+                maximum: 50
+                example: 5
+          examples:
+            basic_request:
+              summary: Basic batch request
+              value:
+                user_ids: [123, 456, 789]
+                limit: 5
+            custom_limit:
+              summary: Request with custom limit
+              value:
+                user_ids: [100, 200, 300, 400]
+                limit: 10
+    responses:
+      200:
+        description: Successfully retrieved batch recommendations
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: true
+                results:
+                  type: object
+                  description: Map of user_id to their recommendations
+                  additionalProperties:
+                    oneOf:
+                      - type: array
+                        items:
+                          type: object
+                          properties:
+                            product_id:
+                              type: integer
+                              example: 456
+                            name:
+                              type: string
+                              example: "Hoa Hồng Đỏ"
+                            price:
+                              type: number
+                              format: float
+                              example: 500000
+                            images:
+                              type: string
+                              example: "https://example.com/image.jpg"
+                            score:
+                              type: number
+                              format: float
+                              example: 0.89
+                            reason:
+                              type: string
+                              example: "Based on your interests"
+                      - type: object
+                        properties:
+                          error:
+                            type: string
+                            example: "User not found"
+            examples:
+              success_response:
+                summary: Successful batch response
+                value:
+                  success: true
+                  results:
+                    "123":
+                      - product_id: 456
+                        name: "Hoa Hồng Đỏ"
+                        price: 500000
+                        images: "https://example.com/rose.jpg"
+                        score: 0.89
+                        reason: "Based on your recent purchases"
+                      - product_id: 789
+                        name: "Hoa Tulip Vàng"
+                        price: 350000
+                        images: "https://example.com/tulip.jpg"
+                        score: 0.85
+                        reason: "Popular in your area"
+                    "456":
+                      - product_id: 101
+                        name: "Hoa Cẩm Chướng"
+                        price: 200000
+                        images: "https://example.com/carnation.jpg"
+                        score: 0.92
+                        reason: "Matches your preferences"
+                    "789":
+                      error: "User not found"
+              partial_success:
+                summary: Partial success with some errors
+                value:
+                  success: true
+                  results:
+                    "123":
+                      - product_id: 456
+                        name: "Hoa Hồng Đỏ"
+                        price: 500000
+                        images: "https://example.com/rose.jpg"
+                        score: 0.89
+                        reason: "Based on your interests"
+                    "456":
+                      error: "Insufficient user data"
+      400:
+        description: Bad request - Invalid input
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: false
+                error:
+                  type: string
+                  example: "Invalid user_ids (max 100)"
+            examples:
+              empty_user_ids:
+                summary: Empty user IDs list
+                value:
+                  success: false
+                  error: "Invalid user_ids (max 100)"
+              too_many_users:
+                summary: Too many user IDs
+                value:
+                  success: false
+                  error: "Invalid user_ids (max 100)"
+      500:
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: false
+                error:
+                  type: string
+                  example: "Database connection failed"
+            examples:
+              error_response:
+                summary: Server error
+                value:
+                  success: false
+                  error: "Unable to process batch recommendations"
+    """
+    try:
+        data = request.get_json()
+        user_ids = data.get('user_ids', [])
+        limit = data.get('limit', 5)
+
+        if not user_ids or len(user_ids) > 100:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid user_ids (max 100)'
+            }), 400
+
+        recommender = get_recommender()
+        results = {}
+
+        for user_id in user_ids:
+            try:
+                recs = recommender.get_recommendations(user_id, limit)
+                results[str(user_id)] = recs
+            except Exception as e:
+                results[str(user_id)] = {'error': str(e)}
+
+        return jsonify({
+            'success': True,
+            'results': results
+        }), 200
+
+    except Exception as e:
+        print(f"Error in get_batch_recommendations: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/recommendations/personalized/<int:user_id>', methods=['GET'])
+def get_personalized_recommendations(user_id: int):
+    """
+    Get personalized product recommendations for a user
+    ---
+    tags:
+      - Recommendations
+    summary: Get personalized product recommendations
+    description: |
+      Retrieves personalized product recommendations for a specific user based on their
+      browsing history, preferences, and interaction patterns.
+    parameters:
+      - name: user_id
+        in: path
+        description: Unique identifier of the user
+        required: true
+        schema:
+          type: integer
+          example: 123
+      - name: limit
+        in: query
+        description: Number of recommendations to return
+        required: false
+        schema:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+          example: 10
+    responses:
+      200:
+        description: Successfully retrieved recommendations
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: true
+                user_id:
+                  type: integer
+                  example: 123
+                recommendations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                        example: 456
+                      name:
+                        type: string
+                        example: "Hoa Hồng Đỏ"
+                      price:
+                        type: number
+                        format: float
+                        example: 500000
+                      images:
+                        type: string
+                        example: "https://example.com/image.jpg"
+                      score:
+                        type: number
+                        format: float
+                        minimum: 0
+                        maximum: 1
+                        example: 0.89
+                        description: Recommendation confidence score
+                      reason:
+                        type: string
+                        example: "Based on your interests"
+                        description: Explanation for why this product is recommended
+                count:
+                  type: integer
+                  example: 10
+                  description: Total number of recommendations returned
+            examples:
+              success_response:
+                summary: Successful recommendation response
+                value:
+                  success: true
+                  user_id: 123
+                  recommendations:
+                    - product_id: 456
+                      name: "Hoa Hồng Đỏ"
+                      price: 500000
+                      images: "https://example.com/rose.jpg"
+                      score: 0.89
+                      reason: "Based on your recent purchases"
+                    - product_id: 789
+                      name: "Hoa Tulip Vàng"
+                      price: 350000
+                      images: "https://example.com/tulip.jpg"
+                      score: 0.85
+                      reason: "Popular in your area"
+                  count: 2
+      500:
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: false
+                error:
+                  type: string
+                  example: "Database connection failed"
+            examples:
+              error_response:
+                summary: Error response
+                value:
+                  success: false
+                  error: "Unable to generate recommendations"
+    """
+    try:
+        # Get query parameters
+        limit = request.args.get('limit', default=10, type=int)
+        limit = min(max(limit, 1), 50)  # Limit between 1 and 50
+
+        # Get recommendations
+        recommender = get_recommender()
+        recommendations = recommender.get_recommendations(user_id, limit)
+
+        # Add reason text
+        for rec in recommendations:
+            rec['reason'] = _generate_reason(rec)
+
+        return jsonify({
+            'success': True,
+            'user_id': user_id,
+            'recommendations': recommendations,
+            'count': len(recommendations)
+        }), 200
+
+    except Exception as e:
+        print(f"Error in get_personalized_recommendations: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)

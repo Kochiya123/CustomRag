@@ -30,3 +30,6 @@ class MysqlService(object):
             self.cursor.execute("Select id, name, price, stock, description, is_active from flowerplus.products where id = %s and product_type = 0 and is_custom = 0", (result[0], ))
             product_result_list.append(self.cursor.fetchone())
         return product_result_list
+
+    def return_connection(self):
+        return self.conn

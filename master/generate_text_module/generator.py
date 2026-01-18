@@ -81,8 +81,8 @@ def build_message(context, prompt_input, image_link, chat_history):
         f"If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. "
         f"List out the price for each of the product"
         f"Old chat history for reference: {chat_history}. "
-        f"OPTIONAL: If exist products in recommendation list, search the web with this format: https://flowerplus.site//product/product_id where replace the product_id with actual product ID. "
-        f"For each of the product in the answer, get the url for the product and attach it to the response"
+        f"OPTIONAL: If exist products in recommendation list, using the markdown link syntax with this format: https://flowerplus.site//product/product_id where replace the product_id with actual product ID."
+        f"Don't ask customer about combination of flower, only ask about complete product description or information"
     )
 
     # Initialize the user content list
