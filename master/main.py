@@ -880,7 +880,7 @@ def get_answer():
         except Exception as e:
             print(f"Warning: Failed to save chat history: {str(e)}")
             # Continue even if saving fails - don't break the API response
-
+    mysql.close_connection()
     return jsonify({'message': answer}), 200
 
 
@@ -1266,7 +1266,7 @@ def get_batch_recommendations():
                 results[str(user_id)] = recs
             except Exception as e:
                 results[str(user_id)] = {'error': str(e)}
-
+        mysql.close_connection()
         return jsonify({
             'success': True,
             'results': results
@@ -1411,6 +1411,7 @@ def get_personalized_recommendations(user_id: int):
         for rec in recommendations:
             rec['reason'] = _generate_reason(rec)
 
+        mysql.close_connection()
         return jsonify({
             'success': True,
             'user_id': user_id,

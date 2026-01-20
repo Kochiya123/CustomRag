@@ -33,3 +33,8 @@ class MysqlService(object):
 
     def return_connection(self):
         return self.conn
+
+    def close_connection(self):
+        self.cursor.close()
+        self.conn.close()
+        return 0
