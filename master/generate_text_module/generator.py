@@ -149,9 +149,9 @@ def build_message_schema(schema_context, relational_context, prompt_input, top_k
     system_content = (
         f"You are a SQL assistant. Generate SQL queries based on the given schema, relationships user input."
         f"Follow the response format"
+        f"Sql result follow this format: id, name, price, stock, description, is_active "
         f"product_type attribute must be set to 0 and is_custom must also be set to 0 if the product table is query"
         f"Don't select images, created_at, updated_at, product_string, sync_status when create the query script"
-        f"Follow the response format of: product id, name, price, stock, description, is_active."
         f"If the user query ask about a specific occasion, for example birthday or christmas, be sure to join it with the sub table product_categories and the categories table and compare the product category"
         f"Most of the products in db contain extra 'Bó hoa' or 'Sản phẩm' in it name. So query for name must use 'like' rather than '='"
         f"Schema: {schema_context}"

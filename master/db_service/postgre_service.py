@@ -20,7 +20,9 @@ class MysqlService(object):
 
     def get_product_on_query(self, query):
         self.cursor.execute(query)
-        product_result_list = self.cursor.fetchall()
+        rows = self.cursor.fetchall()
+        columns = [col[0] for col in self.cursor.description]
+        product_result_list = [dict(zip(columns, row)) for row in rows]
         print(product_result_list)
         return product_result_list
 
