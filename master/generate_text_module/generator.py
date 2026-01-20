@@ -31,6 +31,26 @@ def build_context(products):
             context_lines.append(f"- {product_name} (${price}): {product_text}")
     return "\n".join(context_lines)
 
+
+def format_products_for_context(product_list):
+    """Format product dictionaries as readable text for LLM context"""
+    if not product_list:
+        return []
+    formatted_products = []
+    for product in product_list:
+        product_text = (
+            f"Product ID: {product['id']}\n"
+            f"Name: {product['name']}\n"
+            f"Price: {product['price']}đ\n"
+            f"Stock: {product['stock']}\n"
+            f"Description: {product['description']}\n"
+            f"Active: {'Yes' if product['is_active'] else 'No'}\n"
+            f"---"
+        )
+        formatted_products.append(product_text)
+
+    return "\n\n".join(formatted_products)
+
 def build_category_context(categories):
     """
     Build context string from category list.
@@ -131,8 +151,9 @@ def build_message_schema(schema_context, relational_context, prompt_input, top_k
         f"Follow the response format"
         f"product_type attribute must be set to 0 and is_custom must also be set to 0 if the product table is query"
         f"Don't select images, created_at, updated_at, product_string, sync_status when create the query script"
+        f"Follow the response format of: product id, name, price, stock, description, is_active."
         f"If the user query ask about a specific occasion, for example birthday or christmas, be sure to join it with the sub table product_categories and the categories table and compare the product category"
-        f"Most of the products in db contain extra'Bó hoa' or 'Sản phẩm' in it name. So query for name must use 'like' rather than '='"
+        f"Most of the products in db contain extra 'Bó hoa' or 'Sản phẩm' in it name. So query for name must use 'like' rather than '='"
         f"Schema: {schema_context}"
         f"Relational context: {relational_context}"
         f"Use the following top_k recommendations: {top_k}"
@@ -160,6 +181,7 @@ def build_message_intent(prompt_input):
         f"If the user input about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
         f"If the user ask about any past information, For example: còn sản phẩm nào tương tự vậy không. Classify it as 'product_general'"
+        f"If the user mention about custom made flower or how to use the system. Classify it as 'shop_information'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
         f"If no clue is found, default the top k value to 50"
     )

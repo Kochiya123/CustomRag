@@ -12,7 +12,7 @@ from langfuse import Langfuse
 from master.db_module.connect import connect
 from master.db_service.postgre_service import MysqlService
 from master.generate_text_module.generator import Generator_llm, build_message, build_message_schema, \
-    build_message_intent
+    build_message_intent, format_products_for_context
 from master.embed_module.embed_llm import Embed_llm, save_chat_history, load_chat_history, \
     get_chat_history_user_session, get_latest_history_user_session, reset_session_method
 
@@ -844,7 +844,8 @@ def get_answer():
         result = embed.retrieval_vector_product(cur, conn, query, top_k)
         result.sort(key=lambda x: x[1], reverse=True)
         product_list = mysql.get_product_on_id(result)
-        messages = build_message(product_list, query, image_url, chat_history)
+        context = format_products_for_context(product_list)
+        messages = build_message(context, query, image_url, chat_history)
 
     elif intent == "specific_information":
         # sql query transformation
@@ -854,7 +855,8 @@ def get_answer():
         result = generator.generate_sql_query(sql_message)
         sql_query = result["sql_query"]
         result = mysql.get_product_on_query(sql_query)
-        messages = build_message(result, query, image_url, chat_history)
+        context = format_products_for_context(result)
+        messages = build_message(context, query, image_url, chat_history)
 
     elif intent == "shop_information":
         # general information search

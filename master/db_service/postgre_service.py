@@ -25,10 +25,29 @@ class MysqlService(object):
         return product_result_list
 
     def get_product_on_id(self, result_list):
-        product_result_list = []
-        for result in result_list:
-            self.cursor.execute("Select id, name, price, stock, description, is_active from flowerplus.products where id = %s and product_type = 0 and is_custom = 0", (result[0], ))
-            product_result_list.append(self.cursor.fetchone())
+        if not result_list:
+            return []
+
+        # Extract IDs from result_list
+        product_ids = [result[0] for result in result_list]
+
+        # Use IN clause for single query (more efficient)
+        placeholders = ','.join(['%s'] * len(product_ids))
+        query = f"""
+            SELECT id, name, price, stock, description, is_active 
+            FROM flowerplus.products 
+            WHERE id IN ({placeholders}) 
+            AND product_type = 0 
+            AND is_custom = 0
+        """
+
+        self.cursor.execute(query, product_ids)
+        rows = self.cursor.fetchall()
+
+        # Convert all rows to dictionaries with column names
+        columns = [col[0] for col in self.cursor.description]
+        product_result_list = [dict(zip(columns, row)) for row in rows]
+
         return product_result_list
 
     def return_connection(self):
