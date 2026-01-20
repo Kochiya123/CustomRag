@@ -31,18 +31,18 @@ langfuse = Langfuse(
     # base_url="http://localhost:8000"
 )
 cur, conn = connect()
-mysql = MysqlService()
+
 
 generator = Generator_llm()
 embed = Embed_llm()
 guard = Guardrail()
 reranker = Rerank()
 
-def get_recommender():
+def get_recommender(conn):
     """Initialize recommender with database connection"""
-    if mysql is None:
+    if conn is None:
         raise Exception("Failed to connect to database")
-    return HybridRecommender(mysql.return_connection())
+    return HybridRecommender(conn)
 
 def count_tokens(text, model="gpt-4o"):
     """Count tokens in text using tiktoken"""
@@ -829,6 +829,7 @@ def get_answer():
     # Content moderation check on input
     if guard.guard_check__response(query):
         return jsonify({'message': 'Câu hỏi chứa nội dung không phù hợp'}), 400
+    mysql = MysqlService()
 
     chat_history = get_latest_history_user_session(cur, conn, user_id)
     intent_message = build_message_intent(query)
@@ -1253,7 +1254,10 @@ def get_batch_recommendations():
                 'error': 'Invalid user_ids (max 100)'
             }), 400
 
-        recommender = get_recommender()
+        mysql = MysqlService()
+        conn = mysql.return_connection()
+
+        recommender = get_recommender(conn)
         results = {}
 
         for user_id in user_ids:
@@ -1397,8 +1401,10 @@ def get_personalized_recommendations(user_id: int):
         limit = request.args.get('limit', default=10, type=int)
         limit = min(max(limit, 1), 50)  # Limit between 1 and 50
 
+        mysql = MysqlService()
+        conn = mysql.return_connection()
         # Get recommendations
-        recommender = get_recommender()
+        recommender = get_recommender(conn)
         recommendations = recommender.get_recommendations(user_id, limit)
 
         # Add reason text
