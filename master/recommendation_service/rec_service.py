@@ -140,7 +140,7 @@ class HybridRecommender:
         query = """
         SELECT 
             pf.product_id,
-            pf.user_id,
+            pf.user_id
         FROM product_favorites pf
         WHERE pf.user_id IN ({})
             AND pf.product_id NOT IN ({})

@@ -181,7 +181,7 @@ def build_message_intent(prompt_input):
         f"If the user ask about shop information in general, For example: Shop hoa này đặt ở đâu ? or thời gian giao hàng là gì?. Classify it as 'shop_information'"
         f"If the user input aren't fall into any of the above. Classify it as 'general_input'"
         f"If the user ask about any past information, For example: còn sản phẩm nào tương tự vậy không. Classify it as 'product_general'"
-        f"If the user mention about custom made flower, hoa tuỳ chỉnh, hoa custom or hoa tự tạo and how to use the system for these type of flower product. Classify it as 'shop_information'"
+        f"If the user ask or mention about custom made flower, hoa tuỳ chỉnh, hoa custom or hoa tự tạo and how to use the system for these type of flower product. Classify it as 'shop_information'"
         f"Also try to find any clue of the user indicate the number of product he/she want to view"
         f"If no clue is found, default the top k value to 50"
     )
