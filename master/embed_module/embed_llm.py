@@ -810,7 +810,7 @@ class Embed_llm:
             # Select both id and embedding to get the ID for later retrieval
             # Note: PostgreSQL vector type may need special handling
             cur.execute(
-                "select general_id, general_text ,1- (general_embedding <=> %s::vector) as similarity from general_information where general_embedding IS NOT NULL order by similarity limit 5",
+                "select general_id, general_text ,1- (general_embedding <=> %s::vector) as similarity from general_information where general_embedding IS NOT NULL order by similarity",
                 (query_embedding,))
             rows = cur.fetchall()
 
@@ -823,7 +823,7 @@ class Embed_llm:
                     float(similarity),
                 ]
                 result.append(combined_result)
-
+            result.sort(key=lambda x: x[2], reverse=True)
             return result
         except (Exception, psycopg2.DatabaseError) as error:
             print(f"Database error: {error}")
