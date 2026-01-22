@@ -529,23 +529,14 @@ class HybridRecommender:
         # Select diverse products
         diverse_recs = []
         category_counts = defaultdict(int)
-        max_per_category = max(2, limit // 3)
 
         for rec in recommendations:
             product_id = rec['product_id']
             categories = product_categories.get(product_id, [])
 
-            # Check if we can add this product
-            can_add = True
+            diverse_recs.append(rec)
             for cat_id in categories:
-                if category_counts[cat_id] >= max_per_category:
-                    can_add = False
-                    break
-
-            if can_add:
-                diverse_recs.append(rec)
-                for cat_id in categories:
-                    category_counts[cat_id] += 1
+                category_counts[cat_id] += 1
 
             if len(diverse_recs) >= limit:
                 break
