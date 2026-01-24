@@ -16,8 +16,8 @@ class HybridRecommender:
 
     def __init__(self, db_connection):
         self.db = db_connection
-        self.collaborative_weight = 0.6
-        self.content_weight = 0.4
+        self.collaborative_weight = 0.4
+        self.content_weight = 0.6
 
         # Interaction weights
         self.FAVORITE_WEIGHT = 3
@@ -341,7 +341,8 @@ class HybridRecommender:
         if not user_interactions:
             return {}
 
-        product_ids = tuple(user_interactions.keys())
+        product_ids = tuple(k for k, v in user_interactions.items() if v != 0)
+
 
         query = """
         SELECT 
