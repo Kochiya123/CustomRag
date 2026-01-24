@@ -89,6 +89,12 @@ class HybridRecommender:
         results = cursor.fetchall()
         cursor.close()
 
+        if not results or all(
+                row['favorite_date'] is None and row['purchase_date'] is None
+                for row in results
+        ):
+            return None
+
         interactions = defaultdict(float)
         current_date = datetime.now()
 
@@ -576,6 +582,8 @@ class HybridRecommender:
         ) recent_purchase ON p.id = recent_purchase.product_id
         WHERE p.is_active = true
             AND p.stock > 0
+            AND p.is_custom = 0
+            AND p.product_type = 0
         ORDER BY trend_score DESC
         LIMIT %s
         """
