@@ -985,7 +985,7 @@ def get_chat_history():
       - application/json
     """
     user_id = request.args.get('user_id')
-    
+    cur, conn = connect()
     if not user_id:
         return jsonify({'message': "Missing required parameter 'user_id'"}), 400
     
