@@ -998,11 +998,14 @@ def get_chat_history():
                 'user_id': user_id,
                 'chat_history': []
             }), 404
-        
+
+        cur.close()
+        conn.close()
         return jsonify({
             'user_id': user_id,
             'chat_history': chat_history
         }), 200
+
         
     except Exception as e:
         print(f"Error retrieving chat history: {str(e)}")
