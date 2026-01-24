@@ -119,6 +119,8 @@ class HybridRecommender:
 
             interactions[product_id] = max(interactions[product_id], score)
 
+        interactions = {k: v for k, v in interactions.items() if v != 0.0}
+
         return interactions
 
     def _collaborative_filtering(self, user_id: int, user_interactions: Dict) -> Dict[int, float]:
@@ -341,7 +343,7 @@ class HybridRecommender:
         if not user_interactions:
             return {}
 
-        product_ids = tuple(k for k, v in user_interactions.items() if v != 0)
+        product_ids = tuple(user_interactions.keys())
 
 
         query = """
