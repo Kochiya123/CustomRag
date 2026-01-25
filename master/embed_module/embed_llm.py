@@ -334,7 +334,7 @@ class Embed_llm:
                 texts = query,
                 task = "retrieval.query",
             )
-            threshold = 0.6
+            threshold = 0.1
             query = """
                         SELECT * FROM (
                             SELECT 

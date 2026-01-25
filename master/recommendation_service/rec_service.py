@@ -119,7 +119,7 @@ class HybridRecommender:
 
             interactions[product_id] = max(interactions[product_id], score)
 
-        interactions = {k: v for k, v in interactions.items() if v != 0.0}
+        interactions = {k: v for k, v in interactions.items() if v != 0}
 
         return interactions
 
@@ -195,7 +195,7 @@ class HybridRecommender:
         for row in purchase_results:
             product_id = row['product_id']
             v = row['user_id']
-            cnt = row['interaction_count']
+            cnt = float(row['interaction_count'])
 
             product_scores[product_id] += (
                     similarity_map.get(v, 0) * ORDER_WEIGHT * cnt
